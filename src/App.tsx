@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
+  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Copy,
   KeyRound,
+  LayoutDashboard,
   OctagonX,
   Pause,
   Play,
@@ -936,14 +940,23 @@ export default function App() {
           onRequestModeSwitch={handleRequestModeSwitch}
           onRequestStopAll={() => setShowStopAllModal(true)}
           onSelectTab={handleSelectTab}
+          onOpenIntegrationsTab={handleOpenIntegrationsTab}
           onOpenSettingsSection={handleOpenSettingsSection}
           onSignOut={() => void handleSignOut()}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          fyersConnected={Boolean(fyersFeed.status?.authenticated)}
+          fyersProfileLabel={
+            fyersFeed.status?.profile?.name ||
+            fyersFeed.status?.profile?.fy_id ||
+            undefined
+          }
           isLiveStreaming={fyersFeed.isStreaming}
           liveTick={fyersFeed.latestQuote}
+          telegramArmed={telegramAlerts.isArmedForLive}
+          telegramDestinationsCount={telegramAlerts.activeDestinationCount}
         />
 
-        <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <main className="flex-1 w-full max-w-[1400px] mx-auto px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-20 lg:pb-8 space-y-5 sm:space-y-6">
           {/* One-time Recovery Key Banner shown right after registration or key-based reset */}
           {auth.pendingRecoveryKeyBanner && (
             <section className="bg-white dark:bg-[#111622] border border-blue-200 dark:border-blue-500/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
@@ -1004,16 +1017,14 @@ export default function App() {
 
           {activeTab === 'dashboard' && (
             <DashboardOverview
-              user={auth.user}
               theme={theme}
               config={config}
               labResult={result}
               labScenarioName={activeScenario.name}
+              isLiveStreaming={fyersFeed.isStreaming}
               journal={paperJournal}
-              fyersFeed={fyersFeed}
-              telegram={telegramAlerts}
+              orderJournal={orderJournal}
               onNavigate={handleSelectTab}
-              onOpenIntegrationsTab={handleOpenIntegrationsTab}
               onOpenCalendarDate={(date) =>
                 handleOpenCalendar(date.slice(0, 7), date)
               }
@@ -1446,6 +1457,41 @@ export default function App() {
             />
           )}
         </main>
+
+        {/* Thumb-Zone Mobile Bottom Tab Bar */}
+        <nav
+          aria-label="Mobile quick navigation"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-white/95 dark:bg-[#0E131D]/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800/90 grid grid-cols-4 items-center"
+        >
+          {(
+            [
+              { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+              { id: 'lab', label: 'Lab', icon: Activity },
+              { id: 'journal', label: 'Positions', icon: ClipboardList },
+              { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+            ] as const
+          ).map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelectTab(item.id)}
+                className={`h-full min-h-[44px] flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+                  isActive
+                    ? 'text-blue-600 dark:text-blue-400 font-semibold'
+                    : 'text-slate-500 dark:text-slate-400 font-medium'
+                }`}
+              >
+                <Icon className="w-[19px] h-[19px]" aria-hidden="true" />
+                <span className="text-[10px] leading-tight tracking-tight">
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       <CsvImportModal
