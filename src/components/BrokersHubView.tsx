@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ArrowRight,
   Check,
   Copy,
   Link2,
   LogOut,
   RefreshCw,
-  ShieldCheck,
-  Wifi,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { FyersLiveFeedController } from '../hooks/useFyersLiveFeed';
 import { SaaSUser } from '../hooks/useSaaSAuth';
+import { BrokerLogo, BrokerLogoId } from './BrokerLogos';
 
 interface BrokerStatusItem {
-  id: 'fyers' | 'zerodha' | 'dhan' | 'upstox' | 'angelone';
+  id: BrokerLogoId;
   name: string;
   shortName: string;
   exchangeCoverage: string;
@@ -80,9 +81,10 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
     try {
       await navigator.clipboard.writeText(url);
       setCopiedCallback(true);
+      toast.success('Redirect URI copied.');
       window.setTimeout(() => setCopiedCallback(false), 1800);
     } catch {
-      // ignore
+      toast.error('Unable to copy URI.');
     }
   };
 
@@ -93,22 +95,22 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
   const handleDisconnectFyers = async () => {
     await fyersFeed.handleDisconnect();
     await fetchBrokers();
+    toast.success('Fyers account disconnected.');
   };
 
-  const connectedCount = brokers.filter((b) => b.connected).length;
+  const isFyersConnected = Boolean(fyersFeed.status?.authenticated);
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <section className="flex flex-wrap items-end justify-between gap-4">
+      {/* Section Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
-            Broker Connections
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Each user connects their own broker account inside an encrypted
-            per-user vault. Signed in as{' '}
-            <span className="font-medium text-slate-900">{user.email}</span>.
+          <h2 className="font-display text-base font-semibold text-slate-900">
+            Connected Broker
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Tokens are stored in an encrypted vault scoped to{' '}
+            <span className="font-medium text-slate-700">{user.email}</span>.
           </p>
         </div>
 
@@ -118,91 +120,52 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
             void fyersFeed.refreshStatus();
             void fetchBrokers();
           }}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>Refresh Status</span>
+          <span>Refresh</span>
         </button>
-      </section>
+      </div>
 
-      {/* 3-Column Broker Vault Summary */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 bg-white border border-slate-200 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-        <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
-            Connected Brokers
-          </div>
-          <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900">
-            {connectedCount} / 1 Active
-          </div>
-          <div className="text-xs text-slate-500 mt-0.5">
-            Fyers API v3 live · {upcomingBrokers.length} brokers in roadmap
-          </div>
-        </div>
-
-        <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
-            Tenant Isolation
-          </div>
-          <div className="mt-1.5 font-display text-lg font-bold text-emerald-700">
-            Per-User Vault
-          </div>
-          <div className="text-xs text-slate-500 mt-0.5">
-            AES-256-GCM encrypted tokens scoped to your account ID
-          </div>
-        </div>
-
-        <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
-            Active Market Data Feed
-          </div>
-          <div className="mt-1.5 font-display text-lg font-bold text-slate-900">
-            {fyersFeed.status?.authenticated
-              ? fyersFeed.isStreaming
-                ? 'Fyers Live Streaming'
-                : 'Fyers Ready'
-              : 'Not Connected'}
-          </div>
-          <div className="text-xs text-slate-500 mt-0.5">
-            {fyersFeed.status?.authenticated
-              ? 'Historical 5m candles & 1s live quotes enabled'
-              : 'Connect Fyers below to enable live quotes and 1Y backtests'}
-          </div>
-        </div>
-      </section>
-
-      {/* Active Broker: Fyers API v3 */}
-      <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-emerald-700">
-                Supported Now
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>{fyersBroker?.exchangeCoverage || 'NSE · NFO · MCX · BSE'}</span>
-              <span aria-hidden="true">·</span>
-              <span>OAuth 2.0</span>
+      {/* Primary Broker Card: Fyers API v3 */}
+      <section className="bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <BrokerLogo brokerId="fyers" size="lg" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h3 className="font-display text-lg font-semibold text-slate-900">
+                  Fyers
+                </h3>
+                <span
+                  className={`text-xs font-semibold ${
+                    isFyersConnected ? 'text-emerald-700' : 'text-slate-500'
+                  }`}
+                >
+                  · {isFyersConnected ? 'Connected' : 'Ready to connect'}
+                </span>
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                API v3 · {fyersBroker?.exchangeCoverage || 'NSE · NFO · MCX · BSE'} · OAuth 2.0
+              </div>
             </div>
-            <h2 className="font-display text-lg font-bold text-slate-900 mt-0.5">
-              Fyers API v3
-            </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {fyersFeed.status?.authenticated ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {isFyersConnected ? (
               <>
                 <button
                   type="button"
                   onClick={onGoToLab}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 >
-                  <Wifi className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Open Live Strategy Lab</span>
+                  <span>Open Strategy Lab</span>
+                  <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   onClick={handleConnectFyers}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Reconnect</span>
@@ -210,7 +173,7 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                 <button
                   type="button"
                   onClick={handleDisconnectFyers}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Disconnect</span>
@@ -224,17 +187,17 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                 className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Connect Fyers Account</span>
+                <span>Connect Fyers</span>
               </button>
             )}
           </div>
         </div>
 
-        <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-3">
+        <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 space-y-4">
             <p className="text-sm text-slate-600 leading-relaxed">
               {fyersBroker?.description ||
-                'Connect your personal Fyers trading account via Fyers API v3 OAuth to unlock 1-year 5-minute NIFTY backtesting, live 1-second candle formation, and parameter optimization.'}
+                'Connect your Fyers trading account via OAuth 2.0 for 1-year 5-minute NIFTY history, real-time 1-second candle streaming, and automated paper journal sync.'}
             </p>
 
             {fyersFeed.errorMsg && (
@@ -245,19 +208,18 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
 
             {fyersFeed.status && !fyersFeed.status.configured && (
               <div className="px-3.5 py-2.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
-                Server admin setup required: add{' '}
+                Configure{' '}
                 <code className="font-mono font-semibold">FYERS_APP_ID</code>{' '}
                 and{' '}
                 <code className="font-mono font-semibold">FYERS_SECRET_ID</code>{' '}
-                to your VPS <code className="font-mono">.env</code> file so
-                users can authenticate with Fyers.
+                on the server to enable Fyers sign-in.
               </div>
             )}
 
             {fyersFeed.status?.callbackUrl && (
-              <div className="pt-1 space-y-1.5">
+              <div className="space-y-1.5">
                 <div className="text-[11px] font-medium text-slate-500">
-                  Fyers App Redirect URI (configure once on myapi.fyers.in)
+                  OAuth Redirect URI (myapi.fyers.in)
                 </div>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 px-3 py-2 text-xs font-mono text-slate-700 bg-slate-50 border border-slate-200 rounded-lg truncate">
@@ -278,7 +240,7 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Copy URI</span>
+                        <span>Copy</span>
                       </>
                     )}
                   </button>
@@ -287,62 +249,59 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
             )}
           </div>
 
-          {/* Connected Account Details */}
-          <div className="bg-slate-50/80 border border-slate-200 rounded-lg divide-y divide-slate-200 text-xs">
-            <div className="px-4 py-3 flex items-center justify-between gap-2">
-              <span className="text-slate-500">Connection Status</span>
-              <span
-                className={`font-semibold ${
-                  fyersFeed.status?.authenticated
-                    ? 'text-emerald-700'
-                    : 'text-slate-600'
-                }`}
-              >
-                {fyersFeed.status?.authenticated
-                  ? 'Connected & Authenticated'
-                  : 'Not Connected'}
-              </span>
-            </div>
-            <div className="px-4 py-3 flex items-center justify-between gap-2">
-              <span className="text-slate-500">Fyers Client ID</span>
-              <span className="font-mono tabular-nums font-semibold text-slate-900">
-                {fyersFeed.status?.profile?.fy_id || '—'}
-              </span>
-            </div>
-            <div className="px-4 py-3 flex items-center justify-between gap-2">
+          {/* Account Summary Panel */}
+          <div className="lg:col-span-5 bg-[#F9FAFB] border border-slate-200/90 rounded-lg divide-y divide-slate-200/80 text-xs">
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
               <span className="text-slate-500">Account Holder</span>
               <span className="font-medium text-slate-900">
                 {fyersFeed.status?.profile?.name || '—'}
               </span>
             </div>
-            <div className="px-4 py-3 flex items-center justify-between gap-2">
-              <span className="text-slate-500">Token Persistence</span>
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-slate-500">Client ID</span>
+              <span className="font-mono tabular-nums font-semibold text-slate-900">
+                {fyersFeed.status?.profile?.fy_id || '—'}
+              </span>
+            </div>
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-slate-500">Live Feed</span>
+              <span
+                className={`font-medium ${
+                  fyersFeed.isStreaming
+                    ? 'text-emerald-700'
+                    : isFyersConnected
+                    ? 'text-slate-800'
+                    : 'text-slate-500'
+                }`}
+              >
+                {fyersFeed.isStreaming
+                  ? 'Streaming Live'
+                  : isFyersConnected
+                  ? 'Standby'
+                  : 'Offline'}
+              </span>
+            </div>
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-slate-500">Session Renewal</span>
               <span className="font-medium text-slate-700">
                 {fyersFeed.status?.autoRefreshEnabled
-                  ? '15-Day Auto-Refresh Active'
-                  : 'Daily Session (SEBI 06:00 IST reset)'}
+                  ? '15-Day Auto-Refresh'
+                  : 'Daily (06:00 IST)'}
               </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Extensible Multi-Broker Roadmap */}
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="font-display text-base font-semibold text-slate-900">
-              Upcoming Broker Connectors
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              NeoAlgo uses a modular broker registry so additional Indian
-              brokers plug into the same encrypted per-user vault and charting
-              engine.
-            </p>
-          </div>
-          <span className="text-xs font-mono text-slate-500">
-            Adapter Interface: server/brokers/types.ts
-          </span>
+      {/* Indian Broker Directory (Upcoming Connectors) */}
+      <section className="space-y-3.5">
+        <div>
+          <h2 className="font-display text-base font-semibold text-slate-900">
+            More Indian Brokers
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Additional broker adapters coming to the NeoAlgo connector hub.
+          </p>
         </div>
 
         {loading ? (
@@ -350,7 +309,7 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-32 bg-white border border-slate-200 rounded-xl animate-pulse"
+                className="h-36 bg-white border border-slate-200 rounded-xl animate-pulse"
               />
             ))}
           </div>
@@ -359,62 +318,44 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
             {upcomingBrokers.map((broker) => (
               <div
                 key={broker.id}
-                className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col justify-between gap-3"
+                className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl p-5 flex flex-col justify-between gap-4 transition-colors shadow-[0_1px_2px_rgba(15,23,42,0.02)]"
               >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-display text-sm font-semibold text-slate-900">
-                      {broker.name}
-                    </h3>
-                    <span className="text-[11px] font-medium text-slate-500">
-                      Planned · {broker.authType}
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BrokerLogo brokerId={broker.id} size="md" />
+                      <div className="min-w-0">
+                        <h3 className="font-display text-sm font-semibold text-slate-900 truncate">
+                          {broker.name}
+                        </h3>
+                        <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                          {broker.exchangeCoverage}
+                        </div>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] font-medium text-slate-500 shrink-0 pt-0.5">
+                      Coming soon
                     </span>
                   </div>
+
                   <p className="text-xs text-slate-600 leading-relaxed">
                     {broker.description}
                   </p>
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                  <span className="font-mono">{broker.exchangeCoverage}</span>
+                  <span>{broker.authType}</span>
                   <span>
-                    {broker.capabilities.historicalCandles ? '5m History' : ''}{' '}
-                    · {broker.capabilities.liveQuotes ? 'Live Feed' : ''}
+                    {broker.capabilities.historicalCandles ? '5m History' : ''}
+                    {broker.capabilities.liveQuotes ? ' · Live Feed' : ''}
+                    {broker.capabilities.orderExecution ? ' · Orders' : ''}
                   </span>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </section>
-
-      {/* AWS VPS Multi-User Security Summary */}
-      <section className="bg-white border border-slate-200 rounded-xl px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <ShieldCheck
-            className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <div className="text-xs text-slate-600 space-y-0.5">
-            <div className="font-semibold text-slate-900">
-              AWS VPS Self-Hosted Deployment Ready
-            </div>
-            <p>
-              Set <code className="font-mono text-slate-800">APP_URL</code>,{' '}
-              <code className="font-mono text-slate-800">SESSION_SECRET</code>,{' '}
-              <code className="font-mono text-slate-800">FYERS_APP_ID</code>,
-              and{' '}
-              <code className="font-mono text-slate-800">FYERS_SECRET_ID</code>{' '}
-              in your VPS <code className="font-mono text-slate-800">.env</code>
-              , then run{' '}
-              <code className="font-mono text-slate-800">
-                npm run build &amp;&amp; NODE_ENV=production npm start
-              </code>
-              . All users, paper calendars, and encrypted broker tokens persist
-              under <code className="font-mono text-slate-800">DATA_DIR</code>.
-            </p>
-          </div>
-        </div>
       </section>
     </div>
   );

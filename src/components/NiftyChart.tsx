@@ -128,6 +128,8 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
   const tsToCandleRef = useRef<Map<number, EnrichedCandle>>(new Map());
   const prevScenarioKeyRef = useRef<string>('');
   const prevLenRef = useRef<number>(0);
+  const prevFirstTsRef = useRef<number>(0);
+  const prevLastTsRef = useRef<number>(0);
 
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>('light');
   const [magnetMode, setMagnetMode] = useState<boolean>(false);
@@ -404,11 +406,25 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
 
     const isSameScenario = prevScenarioKeyRef.current === scenarioKey;
     const prevLen = prevLenRef.current;
+    const firstTs = timestamps.length > 0 ? Number(timestamps[0]) : 0;
+    const lastTs =
+      timestamps.length > 0 ? Number(timestamps[timestamps.length - 1]) : 0;
+    const prevBarTs =
+      timestamps.length > 1 ? Number(timestamps[timestamps.length - 2]) : 0;
+
+    const isMonotonicSameSession =
+      prevFirstTsRef.current > 0 &&
+      prevLastTsRef.current > 0 &&
+      firstTs === prevFirstTsRef.current &&
+      lastTs >= prevLastTsRef.current &&
+      (candles.length === prevLen || prevBarTs >= prevLastTsRef.current);
+
     const isIncrementalTickUpdate =
       isSameScenario &&
       prevLen > 0 &&
       candles.length >= prevLen &&
-      candles.length <= prevLen + 1;
+      candles.length <= prevLen + 1 &&
+      isMonotonicSameSession;
 
     const toBar = (i: number): CandlestickData<Time> => ({
       time: timestamps[i],
@@ -427,24 +443,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
           : 'rgba(220, 38, 38, 0.25)',
     });
 
-    if (isIncrementalTickUpdate && candles.length > 0) {
-      // Smooth 60fps TradingView live candle formation without resetting zoom/pan!
-      const lastIdx = candles.length - 1;
-      if (candles.length === prevLen + 1 && lastIdx - 1 >= 0) {
-        candleSeries.update(toBar(lastIdx - 1));
-        volumeSeries.update(toVol(lastIdx - 1));
-        const prevRsi = candles[lastIdx - 1].rsi2;
-        if (prevRsi !== null) {
-          rsiSeries.update({ time: timestamps[lastIdx - 1], value: prevRsi });
-        }
-      }
-      candleSeries.update(toBar(lastIdx));
-      volumeSeries.update(toVol(lastIdx));
-      const lastRsi = candles[lastIdx].rsi2;
-      if (lastRsi !== null) {
-        rsiSeries.update({ time: timestamps[lastIdx], value: lastRsi });
-      }
-    } else {
+    const applyFullSeriesData = (forceFit: boolean) => {
       const candleData: CandlestickData<Time>[] = candles.map((_, i) =>
         toBar(i)
       );
@@ -462,16 +461,46 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       rsiSeries.setData(rsiData);
 
       if (
+        forceFit ||
         !isSameScenario ||
         prevLen === 0 ||
+        firstTs !== prevFirstTsRef.current ||
         Math.abs(candles.length - prevLen) > 2
       ) {
         chart.timeScale().fitContent();
       }
+    };
+
+    if (isIncrementalTickUpdate && candles.length > 0) {
+      // Smooth 60fps TradingView live candle formation without resetting zoom/pan,
+      // with safe fallback to full setData() if timestamps ever diverge.
+      try {
+        const lastIdx = candles.length - 1;
+        if (candles.length === prevLen + 1 && lastIdx - 1 >= 0) {
+          candleSeries.update(toBar(lastIdx - 1));
+          volumeSeries.update(toVol(lastIdx - 1));
+          const prevRsi = candles[lastIdx - 1].rsi2;
+          if (prevRsi !== null) {
+            rsiSeries.update({ time: timestamps[lastIdx - 1], value: prevRsi });
+          }
+        }
+        candleSeries.update(toBar(lastIdx));
+        volumeSeries.update(toVol(lastIdx));
+        const lastRsi = candles[lastIdx].rsi2;
+        if (lastRsi !== null) {
+          rsiSeries.update({ time: timestamps[lastIdx], value: lastRsi });
+        }
+      } catch {
+        applyFullSeriesData(true);
+      }
+    } else {
+      applyFullSeriesData(false);
     }
 
     prevScenarioKeyRef.current = scenarioKey;
     prevLenRef.current = candles.length;
+    prevFirstTsRef.current = firstTs;
+    prevLastTsRef.current = lastTs;
   }, [candles, timestamps, scenarioKey]);
 
   // Update RSI(2) horizontal threshold lines (<12 Buy, >89 Sell, 50 midline)

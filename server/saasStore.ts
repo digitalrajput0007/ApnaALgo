@@ -14,7 +14,12 @@ export interface SaaSUser {
   role: 'owner' | 'trader';
   passwordHash: string;
   passwordSalt: string;
+  avatarDataUrl?: string | null;
+  bio?: string;
+  recoveryKeyHash?: string;
+  recoveryKeySalt?: string;
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface PublicSaaSUser {
@@ -22,7 +27,18 @@ export interface PublicSaaSUser {
   name: string;
   email: string;
   role: 'owner' | 'trader';
+  avatarDataUrl: string | null;
+  bio: string;
+  hasRecoveryKey: boolean;
   createdAt: number;
+}
+
+export interface PasswordResetOtpRecord {
+  codeHash: string;
+  codeSalt: string;
+  expiresAt: number;
+  attempts: number;
+  channel: 'telegram' | 'owner';
 }
 
 export interface AuthSession {
@@ -32,10 +48,16 @@ export interface AuthSession {
   expiresAt: number;
 }
 
+export interface UserOrderJournalData {
+  orders: unknown[];
+  positions: unknown[];
+}
+
 export interface UserWorkspaceData {
   strategyConfig: Record<string, unknown> | null;
   paperTrades: unknown[];
   savedReports: unknown[];
+  orderJournal?: UserOrderJournalData;
   updatedAt: number;
 }
 
@@ -163,12 +185,27 @@ export function verifyPassword(
   return crypto.timingSafeEqual(derived, stored);
 }
 
+export function generateRecoveryKeyString(): string {
+  const bytes = crypto.randomBytes(8).toString('hex').toUpperCase();
+  return `NA-${bytes.slice(0, 4)}-${bytes.slice(4, 8)}-${bytes.slice(
+    8,
+    12
+  )}-${bytes.slice(12, 16)}`;
+}
+
+export function normalizeRecoveryKey(raw: string): string {
+  return raw.trim().toUpperCase().replace(/\s+/g, '');
+}
+
 export function toPublicUser(user: SaaSUser): PublicSaaSUser {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    avatarDataUrl: user.avatarDataUrl ?? null,
+    bio: user.bio ?? '',
+    hasRecoveryKey: Boolean(user.recoveryKeyHash && user.recoveryKeySalt),
     createdAt: user.createdAt,
   };
 }
@@ -177,6 +214,7 @@ class SaaSStore {
   private users = new Map<string, SaaSUser>();
   private usersByEmail = new Map<string, SaaSUser>();
   private authSessions = new Map<string, AuthSession>();
+  private passwordResetOtps = new Map<string, PasswordResetOtpRecord>();
   private workspaces = new Map<string, UserWorkspaceData>();
   private brokerConnections = new Map<
     string,
@@ -338,12 +376,33 @@ class SaaSStore {
     return this.users.size;
   }
 
-  createUser(name: string, email: string, password: string): SaaSUser {
+  getUserById(userId: string): SaaSUser | null {
+    return this.users.get(userId) ?? null;
+  }
+
+  getUserByEmail(email: string): SaaSUser | null {
+    return this.usersByEmail.get(email.trim().toLowerCase()) ?? null;
+  }
+
+  listPublicUsers(): PublicSaaSUser[] {
+    return Array.from(this.users.values())
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map(toPublicUser);
+  }
+
+  createUser(
+    name: string,
+    email: string,
+    password: string
+  ): { user: SaaSUser; recoveryKey: string } {
     const normalizedEmail = email.trim().toLowerCase();
     if (this.usersByEmail.has(normalizedEmail)) {
       throw new Error('An account with this email already exists.');
     }
     const { hash, salt } = hashPassword(password);
+    const recoveryKey = generateRecoveryKeyString();
+    const rec = hashPassword(normalizeRecoveryKey(recoveryKey));
+    const now = Date.now();
     const user: SaaSUser = {
       id: `usr_${crypto.randomBytes(12).toString('hex')}`,
       name: name.trim(),
@@ -351,12 +410,17 @@ class SaaSStore {
       role: this.users.size === 0 ? 'owner' : 'trader',
       passwordHash: hash,
       passwordSalt: salt,
-      createdAt: Date.now(),
+      avatarDataUrl: null,
+      bio: '',
+      recoveryKeyHash: rec.hash,
+      recoveryKeySalt: rec.salt,
+      createdAt: now,
+      updatedAt: now,
     };
     this.users.set(user.id, user);
     this.usersByEmail.set(normalizedEmail, user);
     this.persistUsers();
-    return user;
+    return { user, recoveryKey };
   }
 
   authenticateUser(email: string, password: string): SaaSUser | null {
@@ -366,6 +430,161 @@ class SaaSStore {
       return null;
     }
     return user;
+  }
+
+  updateUserProfile(
+    userId: string,
+    patch: { name?: string; bio?: string; avatarDataUrl?: string | null }
+  ): SaaSUser | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    if (typeof patch.name === 'string' && patch.name.trim().length >= 2) {
+      user.name = patch.name.trim().slice(0, 80);
+    }
+    if (typeof patch.bio === 'string') {
+      user.bio = patch.bio.trim().slice(0, 140);
+    }
+    if (patch.avatarDataUrl !== undefined) {
+      user.avatarDataUrl = patch.avatarDataUrl;
+    }
+    user.updatedAt = Date.now();
+    this.users.set(userId, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return user;
+  }
+
+  changeUserPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): { ok: boolean; error?: string } {
+    const user = this.users.get(userId);
+    if (!user) return { ok: false, error: 'Account not found.' };
+    if (!verifyPassword(currentPassword, user.passwordHash, user.passwordSalt)) {
+      return { ok: false, error: 'Current password is incorrect.' };
+    }
+    const { hash, salt } = hashPassword(newPassword);
+    user.passwordHash = hash;
+    user.passwordSalt = salt;
+    user.updatedAt = Date.now();
+    this.users.set(userId, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return { ok: true };
+  }
+
+  regenerateRecoveryKey(userId: string): string | null {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const recoveryKey = generateRecoveryKeyString();
+    const rec = hashPassword(normalizeRecoveryKey(recoveryKey));
+    user.recoveryKeyHash = rec.hash;
+    user.recoveryKeySalt = rec.salt;
+    user.updatedAt = Date.now();
+    this.users.set(userId, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return recoveryKey;
+  }
+
+  createPasswordResetOtp(
+    userId: string,
+    channel: 'telegram' | 'owner',
+    ttlMs = 15 * 60 * 1000
+  ): string {
+    const code = String(crypto.randomInt(100000, 1000000));
+    const { hash, salt } = hashPassword(code);
+    this.passwordResetOtps.set(userId, {
+      codeHash: hash,
+      codeSalt: salt,
+      expiresAt: Date.now() + ttlMs,
+      attempts: 0,
+      channel,
+    });
+    return code;
+  }
+
+  resetPasswordViaRecovery(
+    email: string,
+    credential: { recoveryKey?: string; otpCode?: string },
+    newPassword: string
+  ): { ok: boolean; user?: SaaSUser; nextRecoveryKey?: string; error?: string } {
+    const user = this.usersByEmail.get(email.trim().toLowerCase());
+    if (!user) {
+      return { ok: false, error: 'Invalid email or recovery credentials.' };
+    }
+
+    let verified = false;
+    let rotateRecoveryKey = false;
+
+    if (credential.recoveryKey && credential.recoveryKey.trim()) {
+      if (user.recoveryKeyHash && user.recoveryKeySalt) {
+        verified = verifyPassword(
+          normalizeRecoveryKey(credential.recoveryKey),
+          user.recoveryKeyHash,
+          user.recoveryKeySalt
+        );
+        if (verified) rotateRecoveryKey = true;
+      }
+      if (!verified) {
+        return { ok: false, error: 'Recovery key does not match this account.' };
+      }
+    } else if (credential.otpCode && credential.otpCode.trim()) {
+      const record = this.passwordResetOtps.get(user.id);
+      if (!record || record.expiresAt <= Date.now()) {
+        this.passwordResetOtps.delete(user.id);
+        return {
+          ok: false,
+          error: 'Reset code expired or not requested. Request a new 6-digit code.',
+        };
+      }
+      if (record.attempts >= 5) {
+        this.passwordResetOtps.delete(user.id);
+        return {
+          ok: false,
+          error: 'Too many invalid attempts. Request a new reset code.',
+        };
+      }
+      record.attempts += 1;
+      const cleanOtp = credential.otpCode.trim().replace(/\s+/g, '');
+      verified = verifyPassword(cleanOtp, record.codeHash, record.codeSalt);
+      if (!verified) {
+        return { ok: false, error: 'Invalid 6-digit reset code.' };
+      }
+      this.passwordResetOtps.delete(user.id);
+    } else {
+      return {
+        ok: false,
+        error: 'Provide either your Recovery Key or a 6-digit Reset Code.',
+      };
+    }
+
+    const { hash, salt } = hashPassword(newPassword);
+    user.passwordHash = hash;
+    user.passwordSalt = salt;
+
+    let nextRecoveryKey: string | undefined;
+    if (rotateRecoveryKey || !user.recoveryKeyHash) {
+      nextRecoveryKey = generateRecoveryKeyString();
+      const rec = hashPassword(normalizeRecoveryKey(nextRecoveryKey));
+      user.recoveryKeyHash = rec.hash;
+      user.recoveryKeySalt = rec.salt;
+    }
+
+    user.updatedAt = Date.now();
+    this.users.set(user.id, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+
+    // Revoke all old sessions for this user upon password reset
+    for (const [tok, sess] of this.authSessions.entries()) {
+      if (sess.userId === user.id) {
+        this.authSessions.delete(tok);
+      }
+    }
+
+    this.persistUsers();
+    return { ok: true, user, nextRecoveryKey };
   }
 
   createAuthSession(userId: string): AuthSession {
@@ -401,14 +620,20 @@ class SaaSStore {
   }
 
   getWorkspace(userId: string): UserWorkspaceData {
-    return (
-      this.workspaces.get(userId) ?? {
+    const stored = this.workspaces.get(userId);
+    if (!stored) {
+      return {
         strategyConfig: null,
         paperTrades: [],
         savedReports: [],
+        orderJournal: { orders: [], positions: [] },
         updatedAt: 0,
-      }
-    );
+      };
+    }
+    return {
+      ...stored,
+      orderJournal: stored.orderJournal ?? { orders: [], positions: [] },
+    };
   }
 
   updateWorkspace(
@@ -429,6 +654,10 @@ class SaaSStore {
         patch.savedReports !== undefined
           ? patch.savedReports
           : current.savedReports,
+      orderJournal:
+        patch.orderJournal !== undefined
+          ? patch.orderJournal
+          : current.orderJournal ?? { orders: [], positions: [] },
       updatedAt: Date.now(),
     };
     this.workspaces.set(userId, next);

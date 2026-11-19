@@ -1,27 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  KeyRound,
   Pause,
   Play,
   RotateCcw,
   Upload,
+  X,
 } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 import { AuthPortal } from './components/AuthPortal';
 import { BrandLogo } from './components/BrandLogo';
-import { BrokersHubView } from './components/BrokersHubView';
 import { CsvImportModal } from './components/CsvImportModal';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EquityCurveChart } from './components/EquityCurveChart';
 import { FyersLiveBar } from './components/FyersLiveBar';
-import { ModificationGuide } from './components/ModificationGuide';
-import { NeoAlgoCodeView } from './components/NeoAlgoCodeView';
+import {
+  IntegrationsSubTab,
+  IntegrationsView,
+} from './components/IntegrationsView';
 import { NiftyChart } from './components/NiftyChart';
 import { PaperCalendarView } from './components/PaperCalendarView';
+import { SettingsSection, SettingsView } from './components/SettingsView';
 import { StrategyControls } from './components/StrategyControls';
-import { TelegramAlertsView } from './components/TelegramAlertsView';
 import { TopBar, WorkspaceTab } from './components/TopBar';
 import { TradeLedger } from './components/TradeLedger';
+import { TradesPositionsJournalView } from './components/TradesPositionsJournalView';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { YearlyBacktestView } from './components/YearlyBacktestView';
 import { generatePythonNeoAlgo } from './engine/codeGenerator';
@@ -31,6 +38,7 @@ import {
   runNiftyStrategy,
 } from './engine/niftyStrategy';
 import { FyersQuoteTick, useFyersLiveFeed } from './hooks/useFyersLiveFeed';
+import { useOrderPositionJournal } from './hooks/useOrderPositionJournal';
 import {
   getTodayIstYYYYMMDD,
   tradeRecordsToPaperEntries,
@@ -40,12 +48,53 @@ import { useSaaSAuth } from './hooks/useSaaSAuth';
 import { useTelegramAlerts } from './hooks/useTelegramAlerts';
 import {
   Candle,
+  OrderJournalPayload,
   PaperTradeEntry,
   SavedBacktestReport,
   ScenarioPreset,
   StrategyConfig,
   TradeRecord,
 } from './types/strategy';
+
+class ChartErrorBoundary extends React.Component<
+  { resetKey: string; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { resetKey: string; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false });
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
+          <div className="text-sm font-semibold text-slate-900">
+            Chart view reset after rapid date change
+          </div>
+          <p className="text-xs text-slate-500">
+            Click reload chart below to re-render the current 5-minute session.
+          </p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+          >
+            Reload Chart
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const SAVED_CONFIG_KEY = 'neoalgo_saved_strategy_config_v1';
 
@@ -69,7 +118,13 @@ export default function App() {
   const userId = auth.user?.id ?? null;
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const [labMode, setLabMode] = useState<'analysis' | 'replay'>('analysis');
+  const [integrationsSubTab, setIntegrationsSubTab] =
+    useState<IntegrationsSubTab>('brokers');
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>('profile');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const [presets, setPresets] = useState<ScenarioPreset[]>(() =>
     getScenarioPresets()
   );
@@ -86,9 +141,12 @@ export default function App() {
   const saveTimerRef = useRef<number | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [copiedRecoveryBanner, setCopiedRecoveryBanner] = useState(false);
 
-  // Per-user Paper Trade Monthly Calendar state (server-synced)
+  // Per-user Paper Trade Monthly Calendar & Trades/Positions Journal state (server-synced)
   const paperJournal = usePaperTradeJournal(userId);
+  const orderJournal = useOrderPositionJournal(userId);
+  const lastLiveJournalSyncSigRef = useRef<string>('');
   const [calendarFocusMonth, setCalendarFocusMonth] = useState<string | null>(
     null
   );
@@ -126,6 +184,7 @@ export default function App() {
           strategyConfig?: Partial<StrategyConfig> | null;
           paperTrades?: PaperTradeEntry[];
           savedReports?: SavedBacktestReport[];
+          orderJournal?: Partial<OrderJournalPayload> | null;
         };
         if (cancelled) return;
 
@@ -143,6 +202,7 @@ export default function App() {
           }
         }
         paperJournal.hydrateFromServer(data.paperTrades ?? []);
+        orderJournal.hydrateFromServer(data.orderJournal ?? null);
         setServerSavedReports(
           Array.isArray(data.savedReports) ? data.savedReports : []
         );
@@ -181,6 +241,7 @@ export default function App() {
     }
     setSavedConfig(config);
     setJustSavedConfig(true);
+    toast.success('Strategy parameters saved.');
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
     }
@@ -202,7 +263,7 @@ export default function App() {
     };
   }, []);
 
-  // Replay controls state
+  // Active scenario & replay state
   const activeScenario = useMemo(
     () => presets.find((p) => p.id === selectedScenarioId) ?? presets[0],
     [presets, selectedScenarioId]
@@ -223,21 +284,38 @@ export default function App() {
     setIsPlaying(false);
     if (next) {
       setReplayCount(
-        activeTab === 'replay'
+        labMode === 'replay'
           ? Math.min(4, next.candles.length)
           : next.candles.length
       );
     }
   };
 
+  const handleSwitchLabMode = (nextMode: 'analysis' | 'replay') => {
+    setLabMode(nextMode);
+    setIsPlaying(false);
+    if (nextMode === 'analysis') {
+      setReplayCount(activeScenario.candles.length);
+    } else if (replayCount >= activeScenario.candles.length) {
+      setReplayCount(Math.min(4, activeScenario.candles.length));
+    }
+  };
+
   const handleSelectTab = (tab: WorkspaceTab) => {
     setActiveTab(tab);
     setIsPlaying(false);
-    if (tab === 'lab') {
-      setReplayCount(activeScenario.candles.length);
-    } else if (tab === 'replay' && replayCount >= activeScenario.candles.length) {
-      setReplayCount(Math.min(4, activeScenario.candles.length));
-    }
+  };
+
+  const handleOpenSettingsSection = (sec: SettingsSection) => {
+    setSettingsSection(sec);
+    setActiveTab('settings');
+    setIsPlaying(false);
+  };
+
+  const handleOpenIntegrationsTab = (sub: IntegrationsSubTab) => {
+    setIntegrationsSubTab(sub);
+    setActiveTab('integrations');
+    setIsPlaying(false);
   };
 
   const handleOpenCalendar = (
@@ -294,13 +372,15 @@ export default function App() {
     formationSubStep,
   ]);
 
-  const effectiveCandleCount =
-    activeTab === 'replay' ? replayCount : activeScenario.candles.length;
+  const isReplayActive = activeTab === 'lab' && labMode === 'replay';
+  const effectiveCandleCount = isReplayActive
+    ? replayCount
+    : activeScenario.candles.length;
 
   const effectiveCandles = useMemo(() => {
     const sliced = activeScenario.candles.slice(0, effectiveCandleCount);
     if (
-      activeTab !== 'replay' ||
+      !isReplayActive ||
       !animateFormation ||
       formationSubStep >= 4 ||
       sliced.length === 0
@@ -344,7 +424,7 @@ export default function App() {
   }, [
     activeScenario.candles,
     effectiveCandleCount,
-    activeTab,
+    isReplayActive,
     animateFormation,
     formationSubStep,
   ]);
@@ -368,6 +448,7 @@ export default function App() {
     a.download = 'neo_nifty_4candle_rsi2.py';
     a.click();
     URL.revokeObjectURL(url);
+    toast.success('Exported neo_nifty_4candle_rsi2.py');
   };
 
   const handleImportCandles = (candles: Candle[], name: string) => {
@@ -375,7 +456,7 @@ export default function App() {
     const customPreset: ScenarioPreset = {
       id: customId,
       name,
-      subtitle: `${candles.length} imported 5-min bars · Custom Fyers/CSV session`,
+      subtitle: `${candles.length} imported 5-min bars · Custom CSV session`,
       dateLabel: 'Custom Data',
       candles,
     };
@@ -383,8 +464,10 @@ export default function App() {
     setSelectedScenarioId(customId);
     setSelectedTradeId(null);
     setIsPlaying(false);
+    setLabMode('analysis');
     setReplayCount(candles.length);
     setActiveTab('lab');
+    toast.success(`Imported ${candles.length} bars.`);
   };
 
   const handleLoadFyersCandles = (
@@ -410,6 +493,7 @@ export default function App() {
     setSelectedScenarioId(liveId);
     setSelectedTradeId(null);
     setIsPlaying(false);
+    setLabMode('analysis');
     setReplayCount(candles.length);
     setActiveTab('lab');
   };
@@ -439,7 +523,7 @@ export default function App() {
       const updated: ScenarioPreset = {
         id: liveId,
         name: `Fyers Live: ${symbol}`,
-        subtitle: `${merged.length} synced 5-min bars from Fyers (${date})`,
+        subtitle: `${merged.length} synced 5-min bars (${date})`,
         dateLabel: 'Fyers Live',
         candles: merged,
       };
@@ -541,10 +625,15 @@ export default function App() {
     strategyConfig: config,
   });
 
+  const connectedIntegrationsCount =
+    (fyersFeed.status?.authenticated ? 1 : 0) +
+    (telegramAlerts.isArmedForLive ? 1 : 0);
+
   const handleSignOut = async () => {
     fyersFeed.stopStream();
     await auth.logout();
     setActiveTab('dashboard');
+    toast.success('Signed out.');
   };
 
   // Paper Trade Calendar save handlers
@@ -574,17 +663,14 @@ export default function App() {
     const outcome = paperJournal.saveEntries(entries);
     setCalendarFocusMonth(outcome.latestMonth);
     setCalendarFocusDate(fallbackDate);
-    setLabCalendarFeedback(
+    const msg =
       outcome.added > 0
         ? `Saved ${outcome.added} paper trade${
             outcome.added === 1 ? '' : 's'
-          } (${fallbackDate}) to Monthly Paper Calendar${
-            outcome.skippedDuplicates > 0
-              ? ` (${outcome.skippedDuplicates} duplicates skipped)`
-              : ''
-          }.`
-        : `All ${outcome.skippedDuplicates} trades from this session are already in your Monthly Paper Calendar.`
-    );
+          } (${fallbackDate}) to Paper Journal.`
+        : `All ${outcome.skippedDuplicates} trades from this session are already in your Paper Journal.`;
+    setLabCalendarFeedback(msg);
+    toast.success(msg);
   };
 
   const handleSaveSingleLabTradeToCalendar = (trade: TradeRecord) => {
@@ -600,14 +686,87 @@ export default function App() {
     const outcome = paperJournal.saveEntries(entries);
     setCalendarFocusMonth(outcome.latestMonth);
     setCalendarFocusDate(fallbackDate);
-    setLabCalendarFeedback(
+    const msg =
       outcome.added > 0
-        ? `Saved Trade #${trade.id} (${trade.direction} @ ${trade.entryPrice.toFixed(
-            2
-          )}) to ${fallbackDate} in Paper Calendar.`
-        : `Trade #${trade.id} is already saved in your Monthly Paper Calendar.`
+        ? `Saved Trade #${trade.id} to ${fallbackDate} in Paper Journal.`
+        : `Trade #${trade.id} is already saved in your Paper Journal.`;
+    setLabCalendarFeedback(msg);
+    toast.success(msg);
+  };
+
+  // Record Strategy Lab orders & positions into Trades & Positions Journal
+  const handleRecordLabOrdersAndPositions = () => {
+    if (result.trades.length === 0) return;
+    const fallbackDate = resolveSessionFallbackDate();
+    const latestPrice =
+      selectedScenarioId === 'fyers_live' && fyersFeed.latestQuote
+        ? fyersFeed.latestQuote.ltp
+        : lastCandle?.close ?? null;
+
+    const outcome = orderJournal.recordSession(result.trades, {
+      symbol: resolveSessionSymbol(),
+      fallbackDate,
+      latestPrice,
+      source:
+        selectedScenarioId === 'fyers_live' ? 'LIVE_SESSION' : 'STRATEGY_LAB',
+      sessionLabel: activeScenario.name,
+      config,
+    });
+    toast.success(
+      `Recorded ${outcome.positionsUpserted} position${
+        outcome.positionsUpserted === 1 ? '' : 's'
+      } & ${outcome.ordersUpserted} order${
+        outcome.ordersUpserted === 1 ? '' : 's'
+      } to Trades & Positions Journal.`
     );
   };
+
+  // Auto-record orders & positions whenever live Fyers streaming produces or updates Strategy Lab trades
+  useEffect(() => {
+    if (!userId || !fyersFeed.isStreaming || liveFyersCandles.length === 0) {
+      return;
+    }
+    const liveEval = runNiftyStrategy(liveFyersCandles, config);
+    if (liveEval.trades.length === 0) return;
+
+    const fallbackDate =
+      liveFyersCandles.find((c) => c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date))
+        ?.date || getTodayIstYYYYMMDD();
+    const latestPrice =
+      fyersFeed.latestQuote?.ltp ??
+      liveFyersCandles[liveFyersCandles.length - 1]?.close ??
+      null;
+
+    // Signature prevents redundant network writes on unchanged ticks while syncing every trade state transition
+    const sig = liveEval.trades
+      .map(
+        (t) =>
+          `${t.id}:${t.entryPrice}:${t.trailedToCost}:${t.exitReason}:${
+            t.exitPrice ?? (latestPrice !== null ? Math.round(latestPrice) : '')
+          }`
+      )
+      .join('|');
+    const fullSig = `${fallbackDate}|${fyersFeed.activeSymbol}|${sig}`;
+    if (fullSig === lastLiveJournalSyncSigRef.current) return;
+    lastLiveJournalSyncSigRef.current = fullSig;
+
+    orderJournal.recordSession(liveEval.trades, {
+      symbol: fyersFeed.activeSymbol,
+      fallbackDate,
+      latestPrice,
+      source: 'LIVE_SESSION',
+      sessionLabel: `Fyers Live: ${fyersFeed.activeSymbol}`,
+      config,
+    });
+  }, [
+    userId,
+    fyersFeed.isStreaming,
+    fyersFeed.activeSymbol,
+    fyersFeed.latestQuote?.ltp,
+    liveFyersCandles,
+    config,
+    orderJournal,
+  ]);
 
   const stageLabel = useMemo(() => {
     if (!lastCandle) return 'Awaiting Data';
@@ -616,53 +775,54 @@ export default function App() {
         return `Evaluating Set ${lastCandle.setNumber} (${lastCandle.positionInSet}/${config.setSize})`;
       case 'WAITING_RSI_ZONE':
         return result.finalBias === 'BULLISH'
-          ? `Bullish Bias · Waiting RSI(${config.rsiLength}) < ${config.rsiBuyThreshold}`
-          : `Bearish Bias · Waiting RSI(${config.rsiLength}) > ${config.rsiSellThreshold}`;
+          ? `Bullish · Waiting RSI(${config.rsiLength}) < ${config.rsiBuyThreshold}`
+          : `Bearish · Waiting RSI(${config.rsiLength}) > ${config.rsiSellThreshold}`;
       case 'SETUP_ARMED':
-        return `Armed ${lastCandle.armedDirection} Breakout @ ${lastCandle.armedTriggerLevel?.toFixed(
+        return `Armed ${lastCandle.armedDirection} @ ${lastCandle.armedTriggerLevel?.toFixed(
           2
         )}`;
       case 'IN_TRADE':
-        return `Position Active · Strict ${config.stopLossPoints}pt SL`;
+        return `Position Active · ${config.stopLossPoints}pt SL`;
       case 'SL_TRAILED_TO_COST':
-        return '1:1 Reached · SL Trailed to Cost';
+        return '1:1 Reached · SL at Cost';
       case 'COMPLETED_DAY':
-        return 'Session Square-Off Complete';
+        return 'Session Complete';
     }
   }, [lastCandle, config, result.finalBias]);
 
   // Initial session check splash
   if (auth.loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 px-6">
-        <BrandLogo size="md" showSubtitle />
-        <p className="text-xs text-slate-500">
-          Restoring your NeoAlgo workspace...
-        </p>
+      <div className="min-h-screen bg-[#F7F8FA] flex flex-col items-center justify-center gap-3 px-6">
+        <BrandLogo size="md" />
+        <p className="text-xs text-slate-400">Loading workspace...</p>
       </div>
     );
   }
 
   // Multi-user SaaS Authentication Gate
   if (!auth.user) {
-    return <AuthPortal auth={auth} />;
+    return (
+      <>
+        <Toaster position="bottom-right" richColors />
+        <AuthPortal auth={auth} />
+      </>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex">
+    <div className="min-h-screen bg-[#F7F8FA] text-slate-900 flex">
+      <Toaster position="bottom-right" richColors />
+
       <WorkspaceSidebar
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
         user={auth.user}
         onSignOut={() => void handleSignOut()}
         fyersFeed={fyersFeed}
-        config={config}
         paperTradeCount={paperJournal.entries.length}
-        telegramActiveCount={
-          telegramAlerts.isArmedForLive
-            ? telegramAlerts.activeDestinationCount
-            : 0
-        }
+        journalPositionCount={orderJournal.positions.length}
+        connectedIntegrationsCount={connectedIntegrationsCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />
@@ -670,23 +830,86 @@ export default function App() {
       <div className="flex-1 min-w-0 flex flex-col min-h-screen">
         <TopBar
           activeTab={activeTab}
+          user={auth.user}
           onSelectTab={handleSelectTab}
-          onDownloadPython={handleDownloadPython}
+          onOpenSettingsSection={handleOpenSettingsSection}
+          onSignOut={() => void handleSignOut()}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           isLiveStreaming={fyersFeed.isStreaming}
           liveTick={fyersFeed.latestQuote}
           onStopLiveStream={fyersFeed.stopStream}
         />
 
-        <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* One-time Recovery Key Banner shown right after registration or key-based reset */}
+          {auth.pendingRecoveryKeyBanner && (
+            <section className="bg-white border border-blue-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+              <div className="flex items-start gap-3 min-w-0">
+                <KeyRound
+                  className="w-4 h-4 text-blue-600 mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <div className="space-y-1 text-xs">
+                  <div className="font-semibold text-slate-900">
+                    Save your account Recovery Key
+                  </div>
+                  <p className="text-slate-600">
+                    Store this key somewhere safe — you can use it to recover
+                    your password from the Sign In screen:{' '}
+                    <code className="font-mono font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded select-all">
+                      {auth.pendingRecoveryKeyBanner}
+                    </code>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(
+                        auth.pendingRecoveryKeyBanner!
+                      );
+                      setCopiedRecoveryBanner(true);
+                      toast.success('Recovery key copied.');
+                      setTimeout(() => setCopiedRecoveryBanner(false), 1800);
+                    } catch {
+                      toast.error('Copy failed.');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  {copiedRecoveryBanner ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  <span>{copiedRecoveryBanner ? 'Copied' : 'Copy key'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={auth.dismissRecoveryKeyBanner}
+                  aria-label="Dismiss recovery key notice"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </section>
+          )}
+
           {activeTab === 'dashboard' && (
             <DashboardOverview
+              user={auth.user}
               config={config}
               labResult={result}
               labScenarioName={activeScenario.name}
               journal={paperJournal}
               fyersFeed={fyersFeed}
+              telegram={telegramAlerts}
               onNavigate={handleSelectTab}
+              onOpenIntegrationsTab={handleOpenIntegrationsTab}
               onOpenCalendarDate={(date) =>
                 handleOpenCalendar(date.slice(0, 7), date)
               }
@@ -697,39 +920,59 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'lab' || activeTab === 'replay') && (
+          {activeTab === 'lab' && (
             <>
-              {/* Header & Scenario Bar */}
-              <section className="flex flex-wrap items-end justify-between gap-4">
+              {/* Unified Strategy Lab & Replay Header */}
+              <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
-                    NIFTY 5m 4-Candle Bias &amp; RSI({config.rsiLength}) Strategy
+                  <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+                    Strategy Lab
                   </h1>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-sm text-slate-500 mt-1">
                     {activeScenario.subtitle}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
-                    {presets.map((preset) => {
-                      const isSelected = preset.id === activeScenario.id;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => handleSelectScenario(preset.id)}
-                          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                            isSelected
-                              ? 'bg-white text-slate-900 shadow-xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          {preset.name}
-                        </button>
-                      );
-                    })}
+                  {/* Live Analysis vs Bar Replay Switch */}
+                  <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchLabMode('analysis')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                        labMode === 'analysis'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Live &amp; Analysis
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchLabMode('replay')}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                        labMode === 'replay'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Bar Replay
+                    </button>
                   </div>
+
+                  {/* Compact Scenario Selector */}
+                  <select
+                    value={activeScenario.id}
+                    onChange={(e) => handleSelectScenario(e.target.value)}
+                    aria-label="Select trading session"
+                    className="px-3 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  >
+                    {presets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </select>
 
                   <button
                     type="button"
@@ -740,26 +983,25 @@ export default function App() {
                     <span>Import CSV</span>
                   </button>
                 </div>
-              </section>
+              </header>
 
-              {/* Fyers API v3 Live Connection & Streaming Bar */}
+              {/* Streamlined Fyers Market Feed Bar */}
               <FyersLiveBar
                 feed={fyersFeed}
                 isLiveModeActive={selectedScenarioId === 'fyers_live'}
+                onOpenIntegrations={() => handleOpenIntegrationsTab('brokers')}
               />
 
-              {/* 4-Column Full-Width KPI Strip */}
+              {/* 4-Column Session KPI Strip */}
               <section
                 aria-label="Session Performance Summary"
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80"
               >
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
-                    Net Session P&amp;L
-                  </div>
-                  <div className="mt-1.5 flex items-baseline gap-2.5">
+                  <div className="text-xs text-slate-500">Session Net P&amp;L</div>
+                  <div className="mt-1.5 flex items-baseline gap-2">
                     <span
-                      className={`font-mono tabular-nums text-2xl font-bold ${
+                      className={`font-mono tabular-nums text-2xl font-semibold ${
                         result.metrics.netPoints > 0
                           ? 'text-emerald-700'
                           : result.metrics.netPoints < 0
@@ -774,9 +1016,7 @@ export default function App() {
                       ({result.metrics.netRupees >= 0 ? '+₹' : '-₹'}
                       {Math.abs(result.metrics.netRupees).toLocaleString(
                         'en-IN',
-                        {
-                          maximumFractionDigits: 0,
-                        }
+                        { maximumFractionDigits: 0 }
                       )}
                       )
                     </span>
@@ -784,12 +1024,10 @@ export default function App() {
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
-                    4-Candle Session Bias
-                  </div>
-                  <div className="mt-1.5 flex items-baseline gap-2.5">
+                  <div className="text-xs text-slate-500">Session Bias</div>
+                  <div className="mt-1.5 flex items-baseline gap-2">
                     <span
-                      className={`font-display text-xl font-bold ${
+                      className={`font-display text-lg font-semibold ${
                         result.finalBias === 'BULLISH'
                           ? 'text-emerald-700'
                           : result.finalBias === 'BEARISH'
@@ -800,8 +1038,8 @@ export default function App() {
                       {result.finalBias === 'PENDING'
                         ? 'Undecided'
                         : result.finalBias === 'BULLISH'
-                        ? 'Bullish (Long)'
-                        : 'Bearish (Short)'}
+                        ? 'Bullish'
+                        : 'Bearish'}
                     </span>
                     <span className="text-xs text-slate-500 font-mono tabular-nums">
                       {result.biasDecidedSet
@@ -812,11 +1050,9 @@ export default function App() {
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
-                    Trades &amp; Win Rate
-                  </div>
-                  <div className="mt-1.5 flex items-baseline gap-2.5">
-                    <span className="font-mono tabular-nums text-2xl font-bold text-slate-900">
+                  <div className="text-xs text-slate-500">Trades &amp; PF</div>
+                  <div className="mt-1.5 flex items-baseline gap-2">
+                    <span className="font-mono tabular-nums text-2xl font-semibold text-slate-900">
                       {result.metrics.wins}W / {result.metrics.losses}L
                       {result.metrics.breakevens > 0
                         ? ` / ${result.metrics.breakevens}BE`
@@ -829,27 +1065,25 @@ export default function App() {
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
-                    Engine State
-                  </div>
+                  <div className="text-xs text-slate-500">Engine State</div>
                   <div className="mt-1.5 text-sm font-semibold text-slate-900 truncate">
                     {stageLabel}
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
-                    Sets Evaluated: {result.metrics.setsEvaluated} · Skipped:{' '}
+                    Sets: {result.metrics.setsEvaluated} · Skipped:{' '}
                     {result.metrics.setsSkipped}
                   </div>
                 </div>
               </section>
 
-              {/* Interactive Candle Replay Toolbar */}
-              {activeTab === 'replay' && (
-                <section className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
+              {/* Inline Replay Controls (only when Bar Replay mode is selected) */}
+              {isReplayActive && (
+                <section className="bg-white border border-slate-200 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setIsPlaying((p) => !p)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                     >
                       {isPlaying ? (
                         <>
@@ -891,7 +1125,7 @@ export default function App() {
                       }}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg cursor-pointer"
                     >
-                      <span>Step 5m</span>
+                      <span>Next</span>
                       <ChevronRight
                         className="w-3.5 h-3.5"
                         aria-hidden="true"
@@ -908,7 +1142,7 @@ export default function App() {
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>Restart</span>
+                      <span>Reset</span>
                     </button>
 
                     <label className="inline-flex items-center gap-1.5 ml-1 text-xs text-slate-600 cursor-pointer select-none">
@@ -921,11 +1155,11 @@ export default function App() {
                         }}
                         className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
                       />
-                      <span>Animate Candle Formation</span>
+                      <span>Animate candle</span>
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-1 min-w-[220px] max-w-md">
+                  <div className="flex items-center gap-3 flex-1 min-w-[200px] max-w-md">
                     <input
                       type="range"
                       min={1}
@@ -937,39 +1171,47 @@ export default function App() {
                         setReplayCount(Number(e.target.value));
                       }}
                       aria-label="Replay candle position"
-                      className="w-full accent-blue-600 cursor-pointer"
+                      className="w-full accent-slate-900 cursor-pointer"
                     />
-                    <span className="font-mono tabular-nums text-xs font-semibold text-slate-700 whitespace-nowrap">
-                      Bar {replayCount} / {activeScenario.candles.length} (
+                    <span className="font-mono tabular-nums text-xs font-medium text-slate-700 whitespace-nowrap">
+                      {replayCount}/{activeScenario.candles.length} (
                       {lastCandle?.time ?? '--'})
                     </span>
                   </div>
                 </section>
               )}
 
-              {/* Main 2-Column Analytical Grid */}
-              <section className="grid grid-cols-1 xl:grid-cols-[1fr_310px] gap-6 items-start">
+              {/* Chart & Strategy Controls Grid */}
+              <section className="grid grid-cols-1 xl:grid-cols-[1fr_308px] gap-6 items-start">
                 <div className="space-y-6 min-w-0">
-                  <NiftyChart
-                    result={result}
-                    totalCandlesInScenario={activeScenario.candles.length}
-                    config={config}
-                    selectedTradeId={selectedTradeId}
-                    onSelectTrade={setSelectedTradeId}
-                    scenarioKey={`${activeScenario.id}:${activeTab}`}
-                    symbolLabel={activeScenario.name}
-                    isLiveStreaming={
-                      fyersFeed.isStreaming &&
-                      selectedScenarioId === 'fyers_live'
-                    }
-                    liveTick={fyersFeed.latestQuote}
-                    isFormingCandle={
-                      activeTab === 'replay' &&
-                      isPlaying &&
-                      animateFormation &&
-                      formationSubStep < 4
-                    }
-                  />
+                  <ChartErrorBoundary
+                    resetKey={`${activeScenario.id}:${labMode}:${
+                      effectiveCandles[0]?.date ?? 'nodate'
+                    }`}
+                  >
+                    <NiftyChart
+                      result={result}
+                      totalCandlesInScenario={activeScenario.candles.length}
+                      config={config}
+                      selectedTradeId={selectedTradeId}
+                      onSelectTrade={setSelectedTradeId}
+                      scenarioKey={`${activeScenario.id}:${labMode}:${
+                        effectiveCandles[0]?.date ?? 'nodate'
+                      }`}
+                      symbolLabel={activeScenario.name}
+                      isLiveStreaming={
+                        fyersFeed.isStreaming &&
+                        selectedScenarioId === 'fyers_live'
+                      }
+                      liveTick={fyersFeed.latestQuote}
+                      isFormingCandle={
+                        isReplayActive &&
+                        isPlaying &&
+                        animateFormation &&
+                        formationSubStep < 4
+                      }
+                    />
+                  </ChartErrorBoundary>
 
                   <EquityCurveChart result={result} config={config} />
 
@@ -980,6 +1222,9 @@ export default function App() {
                     onSelectTrade={setSelectedTradeId}
                     onSaveSessionToCalendar={handleSaveLabSessionToCalendar}
                     onSaveTradeToCalendar={handleSaveSingleLabTradeToCalendar}
+                    onRecordOrdersAndPositions={
+                      handleRecordLabOrdersAndPositions
+                    }
                     calendarFeedback={labCalendarFeedback}
                     onOpenCalendar={() =>
                       handleOpenCalendar(calendarFocusMonth, calendarFocusDate)
@@ -1036,9 +1281,21 @@ export default function App() {
                 handleLoadFyersCandles(
                   candles,
                   `${symbol} · ${date}`,
-                  `${candles.length} real 5-min bars from ${date} (1-Year Backtest Drill-Down)`
+                  `${candles.length} real 5-min bars from ${date}`
                 );
               }}
+            />
+          )}
+
+          {activeTab === 'journal' && (
+            <TradesPositionsJournalView
+              journal={orderJournal}
+              config={config}
+              currentLabTradesCount={result.trades.length}
+              currentLabLabel={activeScenario.name}
+              isLiveAutoRecording={fyersFeed.isStreaming}
+              onRecordCurrentLabSession={handleRecordLabOrdersAndPositions}
+              onGoToLab={() => handleSelectTab('lab')}
             />
           )}
 
@@ -1055,51 +1312,27 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'brokers' && (
-            <BrokersHubView
+          {activeTab === 'integrations' && (
+            <IntegrationsView
               user={auth.user}
               fyersFeed={fyersFeed}
-              onGoToLab={() => handleSelectTab('lab')}
-            />
-          )}
-
-          {activeTab === 'alerts' && (
-            <TelegramAlertsView
               telegram={telegramAlerts}
               strategyConfig={config}
-              isLiveStreaming={fyersFeed.isStreaming}
-              activeSymbol={fyersFeed.activeSymbol}
+              initialSubTab={integrationsSubTab}
               onGoToLab={() => handleSelectTab('lab')}
             />
           )}
 
-          {activeTab === 'code' && (
-            <NeoAlgoCodeView
-              config={config}
+          {activeTab === 'settings' && (
+            <SettingsView
+              auth={auth}
+              initialSection={settingsSection}
+              strategyConfig={config}
               onDownloadPython={handleDownloadPython}
-            />
-          )}
-
-          {activeTab === 'guide' && (
-            <ModificationGuide
-              config={config}
-              onJumpToCode={() => setActiveTab('code')}
+              onGoToIntegrations={() => handleOpenIntegrationsTab('telegram')}
             />
           )}
         </main>
-
-        <footer className="border-t border-slate-200 bg-white mt-10">
-          <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
-            <span>
-              NeoAlgo Quantitative Desk · NSE NIFTY 5m 4-Candle &amp; Wilder
-              RSI({config.rsiLength})
-            </span>
-            <span>
-              Signed in as {auth.user.email} · Verify paper calendar logs before
-              enabling live broker orders
-            </span>
-          </div>
-        </footer>
       </div>
 
       <CsvImportModal

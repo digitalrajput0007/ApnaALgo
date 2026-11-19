@@ -1,3 +1,5 @@
+import https from 'https';
+
 export type TelegramChatType = 'private' | 'group' | 'channel';
 
 export type TelegramAlertEventType =
@@ -310,13 +312,90 @@ export function formatTelegramAlertHtml(payload: TelegramAlertPayload): string {
   ].join('\n');
 }
 
+function normalizeTelegramToken(raw: string): string {
+  return raw.trim().replace(/^bot(?=\d+:)/i, '');
+}
+
+interface TelegramApiResponse<T> {
+  statusCode: number;
+  data: {
+    ok?: boolean;
+    description?: string;
+    result?: T;
+  };
+}
+
+function telegramHttpsRequest<T>(
+  rawToken: string,
+  endpoint: string,
+  payload?: Record<string, unknown>
+): Promise<TelegramApiResponse<T>> {
+  const token = normalizeTelegramToken(rawToken);
+  const bodyStr = payload ? JSON.stringify(payload) : null;
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.telegram.org',
+        port: 443,
+        path: `/bot${encodeURIComponent(token)}/${endpoint}`,
+        method: bodyStr ? 'POST' : 'GET',
+        family: 4,
+        timeout: 15000,
+        headers: bodyStr
+          ? {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(bodyStr),
+            }
+          : undefined,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          try {
+            const parsed = JSON.parse(raw) as TelegramApiResponse<T>['data'];
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              data: parsed,
+            });
+          } catch {
+            reject(
+              new Error(
+                `Unexpected non-JSON response from Telegram (HTTP ${res.statusCode ?? 0})`
+              )
+            );
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Connection to api.telegram.org timed out (15s).'));
+    });
+
+    req.on('error', (err: NodeJS.ErrnoException) => {
+      const code = err.code ? ` (${err.code})` : '';
+      reject(new Error(`Telegram API network error${code}: ${err.message}`));
+    });
+
+    if (bodyStr) {
+      req.write(bodyStr);
+    }
+    req.end();
+  });
+}
+
 export async function verifyTelegramBotToken(botToken: string): Promise<{
   ok: boolean;
   username?: string;
   firstName?: string;
   error?: string;
 }> {
-  const token = botToken.trim();
+  const token = normalizeTelegramToken(botToken);
   if (!token || !token.includes(':')) {
     return {
       ok: false,
@@ -325,16 +404,14 @@ export async function verifyTelegramBotToken(botToken: string): Promise<{
   }
 
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const data = (await resp.json()) as {
-      ok?: boolean;
-      description?: string;
-      result?: { username?: string; first_name?: string };
-    };
-    if (!resp.ok || !data.ok || !data.result) {
+    const { statusCode, data } = await telegramHttpsRequest<{
+      username?: string;
+      first_name?: string;
+    }>(token, 'getMe');
+    if (statusCode < 200 || statusCode >= 300 || !data.ok || !data.result) {
       return {
         ok: false,
-        error: data.description || `Telegram rejected token (${resp.status})`,
+        error: data.description || `Telegram rejected token (${statusCode})`,
       };
     }
     return {
@@ -358,32 +435,27 @@ export async function discoverTelegramChats(botToken: string): Promise<{
   chats: DiscoveredTelegramChat[];
   error?: string;
 }> {
-  const token = botToken.trim();
+  const token = normalizeTelegramToken(botToken);
   if (!token) {
     return { ok: false, chats: [], error: 'Bot token is required first.' };
   }
 
   try {
-    const resp = await fetch(
-      `https://api.telegram.org/bot${token}/getUpdates?limit=50`
-    );
-    const data = (await resp.json()) as {
-      ok?: boolean;
-      description?: string;
-      result?: Array<{
+    const { statusCode, data } = await telegramHttpsRequest<
+      Array<{
         message?: { chat?: RawTgChat };
         edited_message?: { chat?: RawTgChat };
         channel_post?: { chat?: RawTgChat };
         edited_channel_post?: { chat?: RawTgChat };
         my_chat_member?: { chat?: RawTgChat };
-      }>;
-    };
+      }>
+    >(token, 'getUpdates?limit=50');
 
-    if (!resp.ok || !data.ok) {
+    if (statusCode < 200 || statusCode >= 300 || !data.ok) {
       return {
         ok: false,
         chats: [],
-        error: data.description || `Telegram getUpdates error (${resp.status})`,
+        error: data.description || `Telegram getUpdates error (${statusCode})`,
       };
     }
 
@@ -443,33 +515,22 @@ export async function sendTelegramHtmlMessage(
   htmlText: string
 ): Promise<TelegramDeliveryResult> {
   try {
-    const resp = await fetch(
-      `https://api.telegram.org/bot${botToken.trim()}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: destination.chatId.trim(),
-          text: htmlText,
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-        }),
-      }
-    );
+    const { statusCode, data } = await telegramHttpsRequest<{
+      message_id?: number;
+    }>(botToken, 'sendMessage', {
+      chat_id: destination.chatId.trim(),
+      text: htmlText,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    });
 
-    const data = (await resp.json()) as {
-      ok?: boolean;
-      description?: string;
-      result?: { message_id?: number };
-    };
-
-    if (!resp.ok || !data.ok) {
+    if (statusCode < 200 || statusCode >= 300 || !data.ok) {
       return {
         chatId: destination.chatId,
         label: destination.label,
         type: destination.type,
         ok: false,
-        error: data.description || `HTTP ${resp.status}`,
+        error: data.description || `HTTP ${statusCode}`,
       };
     }
 

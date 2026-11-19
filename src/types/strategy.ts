@@ -283,3 +283,77 @@ export interface PaperTradeEntry {
     maxTradesPerDay: number;
   };
 }
+
+export type OrderLegType =
+  | 'ENTRY'
+  | 'SL_MODIFY'
+  | 'TARGET_EXIT'
+  | 'SL_EXIT'
+  | 'COST_EXIT'
+  | 'EOD_EXIT'
+  | 'RESTING_SL'
+  | 'RESTING_TARGET';
+
+export type OrderStatus = 'EXECUTED' | 'OPEN' | 'MODIFIED';
+
+export interface RecordedOrder {
+  id: string;
+  tradeKey: string;
+  tradeNumber: number;
+  date: string; // YYYY-MM-DD IST
+  time: string; // HH:MM IST
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  leg: OrderLegType;
+  orderType:
+    | 'SL-M BREAKOUT'
+    | 'SL-M'
+    | 'LIMIT TARGET'
+    | 'MARKET EOD'
+    | 'SL MODIFY';
+  qty: number;
+  price: number;
+  triggerCondition: string;
+  status: OrderStatus;
+  source: PaperTradeSource;
+  sessionLabel: string;
+  recordedAt: string;
+  configSummary: string;
+}
+
+export interface RecordedPosition {
+  id: string;
+  tradeKey: string;
+  tradeNumber: number;
+  date: string; // YYYY-MM-DD IST
+  symbol: string;
+  direction: 'LONG' | 'SHORT';
+  qty: number;
+  lots: number;
+  lotSize: number;
+  avgEntryPrice: number;
+  ltpOrExitPrice: number;
+  initialSlPrice: number;
+  currentSlPrice: number;
+  targetPrice: number;
+  trailedToCost: boolean;
+  status: 'OPEN' | 'CLOSED';
+  exitReason: TradeExitReason;
+  entryTime: string;
+  exitTime?: string;
+  signalTime: string;
+  signalRsi: number;
+  biasSetNumber: number;
+  pnlPoints: number;
+  pnlRupees: number;
+  source: PaperTradeSource;
+  sessionLabel: string;
+  recordedAt: string;
+  configSummary: string;
+}
+
+export interface OrderJournalPayload {
+  orders: RecordedOrder[];
+  positions: RecordedPosition[];
+}
+

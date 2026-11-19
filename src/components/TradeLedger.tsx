@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalendarPlus } from 'lucide-react';
+import { CalendarPlus, ClipboardPlus } from 'lucide-react';
 import { BacktestResult, StrategyConfig, TradeRecord } from '../types/strategy';
 
 interface TradeLedgerProps {
@@ -9,6 +9,7 @@ interface TradeLedgerProps {
   onSelectTrade: (tradeId: number | null) => void;
   onSaveSessionToCalendar?: () => void;
   onSaveTradeToCalendar?: (trade: TradeRecord) => void;
+  onRecordOrdersAndPositions?: () => void;
   calendarFeedback?: string | null;
   onOpenCalendar?: () => void;
 }
@@ -22,6 +23,7 @@ export const TradeLedger: React.FC<TradeLedgerProps> = ({
   onSelectTrade,
   onSaveSessionToCalendar,
   onSaveTradeToCalendar,
+  onRecordOrdersAndPositions,
   calendarFeedback,
   onOpenCalendar,
 }) => {
@@ -96,14 +98,25 @@ export const TradeLedger: React.FC<TradeLedgerProps> = ({
             </span>
           )}
 
+          {onRecordOrdersAndPositions && result.trades.length > 0 && (
+            <button
+              type="button"
+              onClick={onRecordOrdersAndPositions}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <ClipboardPlus className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Record Orders &amp; Positions</span>
+            </button>
+          )}
+
           {onSaveSessionToCalendar && result.trades.length > 0 && (
             <button
               type="button"
               onClick={onSaveSessionToCalendar}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <CalendarPlus className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Save to Paper Calendar</span>
+              <span>Save to Calendar</span>
             </button>
           )}
         </div>

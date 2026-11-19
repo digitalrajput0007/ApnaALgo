@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import dns from 'dns';
 import dotenv from 'dotenv';
 import express, { CookieOptions, Request, Response } from 'express';
 import http from 'http';
@@ -28,6 +29,7 @@ import {
   verifyTelegramBotToken,
 } from './server/telegramService';
 
+dns.setDefaultResultOrder('ipv4first');
 dotenv.config();
 
 interface FyersCandleBar {
@@ -500,10 +502,14 @@ async function startServer() {
     }
 
     try {
-      const user = saasStore.createUser(trimmedName, trimmedEmail, rawPassword);
+      const { user, recoveryKey } = saasStore.createUser(
+        trimmedName,
+        trimmedEmail,
+        rawPassword
+      );
       const session = saasStore.createAuthSession(user.id);
       res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
-      res.status(201).json({ user: toPublicUser(user) });
+      res.status(201).json({ user: toPublicUser(user), recoveryKey });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Registration failed.';
       res.status(409).json({ error: msg });
@@ -546,6 +552,279 @@ async function startServer() {
       path: opts.path,
     });
     res.json({ ok: true });
+  });
+
+  // Password Recovery (Recovery Key + Telegram 6-Digit OTP + Owner Reset Code)
+  app.post('/api/auth/forgot/options', (req: Request, res: Response) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: 'Enter a valid email address.' });
+      return;
+    }
+    const user = saasStore.getUserByEmail(email);
+    if (!user) {
+      // Return generic shape without confirming existence
+      res.json({
+        hasRecoveryKey: true,
+        hasTelegramOtp: false,
+      });
+      return;
+    }
+    const tg = saasStore.getTelegramConfig(user.id);
+    const hasPersonalTelegram = Boolean(
+      tg.botToken &&
+        tg.destinations.some((d) => d.enabled && d.type === 'private')
+    );
+    res.json({
+      hasRecoveryKey: Boolean(user.recoveryKeyHash && user.recoveryKeySalt),
+      hasTelegramOtp: hasPersonalTelegram,
+    });
+  });
+
+  app.post('/api/auth/forgot/telegram-otp', async (req: Request, res: Response) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: 'Enter a valid email address.' });
+      return;
+    }
+
+    const user = saasStore.getUserByEmail(email);
+    if (!user) {
+      res.status(404).json({
+        error:
+          'No Telegram personal DM recovery is configured for this email. Use your Recovery Key or contact your workspace owner.',
+      });
+      return;
+    }
+
+    const tg = saasStore.getTelegramConfig(user.id);
+    const privateDest = tg.destinations.find(
+      (d) => d.enabled && d.type === 'private'
+    );
+    if (!tg.botToken || !privateDest) {
+      res.status(400).json({
+        error:
+          'Telegram DM is not configured for this account. Use your Recovery Key or ask your workspace owner for a reset code.',
+      });
+      return;
+    }
+
+    const code = saasStore.createPasswordResetOtp(user.id, 'telegram', 10 * 60 * 1000);
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    const html = [
+      '<b>NeoAlgo · Password Recovery Code</b>',
+      `Your single-use verification code is: <code>${code}</code>`,
+      'Valid for 10 minutes. Do not share this code with anyone.',
+      `<i>Requested at ${formatIstHHMMSS(nowEpoch)} IST</i>`,
+    ].join('\n');
+
+    const delivery = await sendTelegramHtmlMessage(tg.botToken, privateDest, html);
+    if (!delivery.ok) {
+      res.status(502).json({
+        error: `Could not deliver Telegram code: ${delivery.error || 'Telegram error'}`,
+      });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      message: `6-digit recovery code sent to your Telegram (${privateDest.label}).`,
+    });
+  });
+
+  app.post('/api/auth/forgot/reset', (req: Request, res: Response) => {
+    const { email, recoveryKey, otpCode, newPassword } = (req.body || {}) as {
+      email?: string;
+      recoveryKey?: string;
+      otpCode?: string;
+      newPassword?: string;
+    };
+
+    const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const rawNew = typeof newPassword === 'string' ? newPassword : '';
+
+    if (!trimmedEmail) {
+      res.status(400).json({ error: 'Email address is required.' });
+      return;
+    }
+    if (rawNew.length < 6 || rawNew.length > 128) {
+      res.status(400).json({
+        error: 'New password must be at least 6 characters.',
+      });
+      return;
+    }
+
+    const outcome = saasStore.resetPasswordViaRecovery(
+      trimmedEmail,
+      { recoveryKey, otpCode },
+      rawNew
+    );
+
+    if (!outcome.ok || !outcome.user) {
+      res.status(400).json({
+        error: outcome.error || 'Password recovery failed.',
+      });
+      return;
+    }
+
+    const session = saasStore.createAuthSession(outcome.user.id);
+    res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
+    res.json({
+      ok: true,
+      user: toPublicUser(outcome.user),
+      nextRecoveryKey: outcome.nextRecoveryKey ?? null,
+    });
+  });
+
+  // =========================================================================
+  // 1B. ACCOUNT PROFILE, AVATAR, PASSWORD & SECURITY SETTINGS (/api/account/*)
+  // =========================================================================
+
+  app.put('/api/account/profile', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    const { name, bio, avatarDataUrl } = (req.body || {}) as {
+      name?: string;
+      bio?: string;
+      avatarDataUrl?: string | null;
+    };
+
+    if (name !== undefined) {
+      const trimmed = typeof name === 'string' ? name.trim() : '';
+      if (trimmed.length < 2 || trimmed.length > 80) {
+        res.status(400).json({ error: 'Full name must be 2–80 characters.' });
+        return;
+      }
+    }
+
+    if (avatarDataUrl !== undefined && avatarDataUrl !== null) {
+      if (
+        typeof avatarDataUrl !== 'string' ||
+        !/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+          avatarDataUrl
+        )
+      ) {
+        res.status(400).json({
+          error: 'Profile picture must be a valid PNG, JPEG, or WebP image.',
+        });
+        return;
+      }
+      if (avatarDataUrl.length > 500_000) {
+        res.status(400).json({
+          error: 'Profile picture is too large (max ~350 KB after compression).',
+        });
+        return;
+      }
+    }
+
+    const updated = saasStore.updateUserProfile(user.id, {
+      name,
+      bio,
+      avatarDataUrl,
+    });
+    if (!updated) {
+      res.status(404).json({ error: 'Account not found.' });
+      return;
+    }
+    res.json({ ok: true, user: toPublicUser(updated) });
+  });
+
+  app.post('/api/account/change-password', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    const { currentPassword, newPassword } = (req.body || {}) as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({
+        error: 'Current password and new password are required.',
+      });
+      return;
+    }
+    if (newPassword.length < 6 || newPassword.length > 128) {
+      res.status(400).json({
+        error: 'New password must be at least 6 characters.',
+      });
+      return;
+    }
+
+    const outcome = saasStore.changeUserPassword(
+      user.id,
+      currentPassword,
+      newPassword
+    );
+    if (!outcome.ok) {
+      res.status(400).json({ error: outcome.error || 'Could not update password.' });
+      return;
+    }
+
+    res.json({ ok: true });
+  });
+
+  app.post('/api/account/recovery-key/regenerate', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const recoveryKey = saasStore.regenerateRecoveryKey(user.id);
+    if (!recoveryKey) {
+      res.status(404).json({ error: 'Account not found.' });
+      return;
+    }
+    const refreshed = saasStore.getUserById(user.id);
+    res.json({
+      ok: true,
+      recoveryKey,
+      user: refreshed ? toPublicUser(refreshed) : user,
+    });
+  });
+
+  app.get('/api/account/team', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Owner permissions required.' });
+      return;
+    }
+    res.json({ users: saasStore.listPublicUsers() });
+  });
+
+  app.post('/api/account/team/:targetUserId/reset-code', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Owner permissions required.' });
+      return;
+    }
+    const target = saasStore.getUserById(req.params.targetUserId);
+    if (!target) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+    const code = saasStore.createPasswordResetOtp(target.id, 'owner', 15 * 60 * 1000);
+    res.json({
+      ok: true,
+      email: target.email,
+      code,
+      expiresInMinutes: 15,
+    });
   });
 
   // =========================================================================
@@ -610,6 +889,32 @@ async function startServer() {
       savedReports: reports.slice(0, 200),
     });
     res.json({ ok: true, count: updated.savedReports.length, updatedAt: updated.updatedAt });
+  });
+
+  app.put('/api/user/order-journal', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const orders = req.body?.orders;
+    const positions = req.body?.positions;
+    if (!Array.isArray(orders) || !Array.isArray(positions)) {
+      res.status(400).json({ error: 'orders and positions arrays are required.' });
+      return;
+    }
+    const updated = saasStore.updateWorkspace(user.id, {
+      orderJournal: {
+        orders: orders.slice(0, 10000),
+        positions: positions.slice(0, 5000),
+      },
+    });
+    res.json({
+      ok: true,
+      ordersCount: updated.orderJournal?.orders.length ?? 0,
+      positionsCount: updated.orderJournal?.positions.length ?? 0,
+      updatedAt: updated.updatedAt,
+    });
   });
 
   // =========================================================================
@@ -1168,6 +1473,7 @@ async function startServer() {
   });
 
   app.get('/api/fyers/history', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const creds = getFyersCredentials();
     const entry = getUserFyersEntry(req);
     if (!creds || !entry) {
@@ -1207,6 +1513,7 @@ async function startServer() {
   });
 
   app.get('/api/fyers/history-range', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const creds = getFyersCredentials();
     const entry = getUserFyersEntry(req);
     if (!creds || !entry) {
@@ -1284,6 +1591,7 @@ async function startServer() {
   });
 
   app.get('/api/fyers/quotes', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const creds = getFyersCredentials();
     const entry = getUserFyersEntry(req);
     if (!creds || !entry) {

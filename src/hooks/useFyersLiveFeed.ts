@@ -84,6 +84,7 @@ export function useFyersLiveFeed({
   const httpPollRef = useRef<number | null>(null);
   const wsFallbackTimerRef = useRef<number | null>(null);
   const streamingIntentRef = useRef<boolean>(false);
+  const fetchSeqRef = useRef<number>(0);
 
   // Keep latest callbacks in refs so active streams never depend on callback identity
   const onLoadCandlesRef = useRef(onLoadCandles);
@@ -215,15 +216,18 @@ export function useFyersLiveFeed({
   }, [refreshStatus, stopStream]);
 
   const handleFetchHistory = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     setErrorMsg(null);
     setFetchingHistory(true);
     try {
+      const targetDate = tradeDate || status?.istToday || '';
       const params = new URLSearchParams({
         symbol: activeSymbol,
-        date: tradeDate || status?.istToday || '',
+        date: targetDate,
       });
       const resp = await fetch(`/api/fyers/history?${params.toString()}`, {
         credentials: 'include',
+        cache: 'no-store',
       });
       const data = (await resp.json()) as {
         symbol?: string;
@@ -231,6 +235,9 @@ export function useFyersLiveFeed({
         candles?: Candle[];
         error?: string;
       };
+      // Ignore stale responses if the user rapidly switched dates and clicked Fetch again
+      if (seq !== fetchSeqRef.current) return;
+
       if (!resp.ok || !data.candles) {
         if (resp.status === 401) {
           void refreshStatus();
@@ -240,7 +247,7 @@ export function useFyersLiveFeed({
       if (data.candles.length === 0) {
         setErrorMsg(
           `No regular-session 5m candles returned for ${activeSymbol} on ${
-            data.date || tradeDate
+            data.date || targetDate
           } (market holiday, weekend, or pre-open).`
         );
         return;
@@ -251,9 +258,12 @@ export function useFyersLiveFeed({
         `${data.candles.length} real 5-min bars fetched from Fyers (${data.date})`
       );
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       setErrorMsg(err instanceof Error ? err.message : 'History fetch failed');
     } finally {
-      setFetchingHistory(false);
+      if (seq === fetchSeqRef.current) {
+        setFetchingHistory(false);
+      }
     }
   }, [activeSymbol, refreshStatus, status?.istToday, tradeDate]);
 

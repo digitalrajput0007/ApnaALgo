@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Lock, Mail, User } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Send,
+} from 'lucide-react';
 import { SaaSAuthController } from '../hooks/useSaaSAuth';
 import { BrandLogo } from './BrandLogo';
 
@@ -7,228 +14,166 @@ interface AuthPortalProps {
   auth: SaaSAuthController;
 }
 
+type AuthMode = 'login' | 'register' | 'forgot';
+type RecoveryMethod = 'key' | 'otp';
+
 export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
-  const [mode, setMode] = useState<'login' | 'register'>(
+  const [mode, setMode] = useState<AuthMode>(
     auth.registeredUsers === 0 ? 'register' : 'login'
   );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Recovery flow state
+  const [recoveryMethod, setRecoveryMethod] = useState<RecoveryMethod>('key');
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpStatus, setOtpStatus] = useState<{
+    kind: 'info' | 'error';
+    text: string;
+  } | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (auth.registeredUsers === 0) {
+    if (auth.registeredUsers === 0 && mode === 'login') {
       setMode('register');
     }
-  }, [auth.registeredUsers]);
+  }, [auth.registeredUsers, mode]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
+    setLocalError(null);
+    setOtpStatus(null);
+    auth.clearError();
+  };
+
+  const handlePrimarySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLocalError(null);
     if (mode === 'register') {
       await auth.register(name, email, password);
-    } else {
+    } else if (mode === 'login') {
       await auth.login(email, password);
     }
   };
 
+  const handleRequestTelegramOtp = async () => {
+    setLocalError(null);
+    setOtpStatus(null);
+    if (!email.trim()) {
+      setLocalError('Enter your account email address first.');
+      return;
+    }
+    setSendingOtp(true);
+    const res = await auth.requestTelegramRecoveryOtp(email.trim());
+    setSendingOtp(false);
+    if (res.ok) {
+      setOtpStatus({
+        kind: 'info',
+        text: res.message || '6-digit verification code sent to your Telegram.',
+      });
+    } else {
+      setOtpStatus({
+        kind: 'error',
+        text: res.error || 'Could not send Telegram code.',
+      });
+    }
+  };
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    if (newPassword.length < 6) {
+      setLocalError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setLocalError('New password and confirmation do not match.');
+      return;
+    }
+    await auth.resetPasswordWithRecovery({
+      email: email.trim(),
+      recoveryKey: recoveryMethod === 'key' ? recoveryKey.trim() : undefined,
+      otpCode: recoveryMethod === 'otp' ? otpCode.trim() : undefined,
+      newPassword,
+    });
+  };
+
+  const displayError = localError || auth.authError;
+
   return (
-    <div className="min-h-screen bg-slate-50 grid grid-cols-1 lg:grid-cols-2">
-      {/* Left Brand & Platform Panel */}
-      <div className="bg-slate-900 text-slate-100 px-8 sm:px-12 py-12 flex flex-col justify-between gap-12">
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2.5 select-none">
-            <svg
-              viewBox="0 0 36 36"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-8 h-8 shrink-0"
-              aria-hidden="true"
-            >
-              <rect width="36" height="36" rx="9" fill="#1E293B" />
-              <rect
-                x="0.75"
-                y="0.75"
-                width="34.5"
-                height="34.5"
-                rx="8.25"
-                stroke="#334155"
-                strokeWidth="1.5"
-              />
-              <line
-                x1="11"
-                y1="9"
-                x2="11"
-                y2="27"
-                stroke="#64748B"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-              />
-              <rect x="8.75" y="15" width="4.5" height="8" rx="1.25" fill="#94A3B8" />
-              <line
-                x1="18"
-                y1="8"
-                x2="18"
-                y2="25"
-                stroke="#3B82F6"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-              />
-              <rect x="15.75" y="12" width="4.5" height="9.5" rx="1.25" fill="#3B82F6" />
-              <line
-                x1="25"
-                y1="7"
-                x2="25"
-                y2="22"
-                stroke="#10B981"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-              />
-              <rect x="22.75" y="9.5" width="4.5" height="9" rx="1.25" fill="#10B981" />
-              <path
-                d="M9.5 25.5L18 19.5L26.5 11.5"
-                stroke="#F8FAFC"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <div className="leading-none">
-              <span className="font-display text-lg font-bold tracking-tight text-white">
-                Neo<span className="text-blue-400">Algo</span>
-              </span>
-              <div className="text-[11px] font-medium text-slate-400 mt-0.5">
-                Multi-User Quantitative Desk
-              </div>
-            </div>
-          </div>
-
-          <span className="text-xs font-mono text-slate-400">
-            Self-Hosted SaaS
-          </span>
-        </div>
-
-        <div className="max-w-md space-y-6">
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight [text-wrap:balance]">
-            Systematic NIFTY trading with isolated broker workspaces
-          </h1>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Each trader signs into their own private workspace with persistent
-            strategy rules, 1-year historical backtesting, monthly paper trade
-            calendars, and encrypted broker connections.
-          </p>
-
-          <div className="pt-4 border-t border-slate-800 space-y-4">
-            <div>
-              <div className="text-xs font-semibold text-white">
-                01. Per-User Encrypted Broker Vault
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Connect your Fyers API v3 account today via OAuth 2.0. Built on
-                an extensible broker registry ready for Zerodha, Dhan, Upstox,
-                and Angel One.
-              </p>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-white">
-                02. 1-Year Backtester &amp; Parameter Optimizer
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Sweep SL, Target, Wilder RSI(2), Entry Buffer, and Daily Trade
-                Caps across custom NSE date ranges and save winning setups.
-              </p>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-white">
-                03. Monthly Paper Trade Calendar
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Archive backtested sessions and live paper trades into a
-                searchable monthly calendar with weekly totals and trade notes.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-5">
-          <span>NeoAlgo · NSE NIFTY 5m Systematic Platform</span>
-          <span className="font-mono">AWS VPS Ready</span>
-        </div>
+    <div className="min-h-screen bg-[#F7F8FA] flex flex-col justify-between px-4 sm:px-6 py-8">
+      {/* Quiet Top Brand Row */}
+      <div className="w-full max-w-md mx-auto flex items-center justify-between">
+        <BrandLogo size="md" />
+        <span className="text-xs text-slate-400">NIFTY 5m Desk</span>
       </div>
 
-      {/* Right Authentication Form Panel */}
-      <div className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md space-y-6">
-          <div className="lg:hidden">
-            <BrandLogo size="md" showSubtitle />
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl p-7 space-y-6">
-            <div className="space-y-1.5">
-              <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">
-                {mode === 'login'
-                  ? 'Sign in to your workspace'
-                  : auth.registeredUsers === 0
-                  ? 'Create administrator account'
-                  : 'Create your trader account'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {mode === 'login'
-                  ? 'Access your saved strategies, paper calendar, and connected brokers.'
-                  : 'Set up an isolated NeoAlgo workspace to connect your Fyers account.'}
-              </p>
-            </div>
-
-            {/* Mode Switch */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  auth.clearError();
-                }}
-                className={`py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  mode === 'login'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  auth.clearError();
-                }}
-                className={`py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
-                  mode === 'register'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            {auth.authError && (
-              <div
-                role="alert"
-                className="px-3.5 py-2.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg"
-              >
-                {auth.authError}
+      {/* Centered Focused Auth Card */}
+      <main className="w-full max-w-[420px] mx-auto my-8">
+        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-7 sm:p-8 space-y-6">
+          {mode !== 'forgot' ? (
+            <>
+              <div className="space-y-1.5">
+                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900">
+                  {mode === 'login'
+                    ? 'Sign in to NeoAlgo'
+                    : auth.registeredUsers === 0
+                    ? 'Create workspace owner account'
+                    : 'Create your account'}
+                </h1>
+                <p className="text-[13px] text-slate-500">
+                  {mode === 'login'
+                    ? 'Enter your credentials to access your trading desk.'
+                    : 'Set up your private strategy, broker, and alert workspace.'}
+                </p>
               </div>
-            )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === 'register' && (
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-700">
-                    Full Name
-                  </span>
-                  <div className="relative mt-1.5">
-                    <User
-                      className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"
-                      aria-hidden="true"
-                    />
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    mode === 'login'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode('register')}
+                  className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    mode === 'register'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Create account
+                </button>
+              </div>
+
+              {displayError && (
+                <div
+                  role="alert"
+                  className="px-3.5 py-2.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-lg"
+                >
+                  {displayError}
+                </div>
+              )}
+
+              <form onSubmit={handlePrimarySubmit} className="space-y-4">
+                {mode === 'register' && (
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-slate-700">
+                      Full name
+                    </span>
                     <input
                       type="text"
                       required
@@ -238,84 +183,289 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Aarav Sharma"
                       autoComplete="name"
-                      className="w-full pl-9 pr-3 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                      className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
                     />
-                  </div>
-                </label>
-              )}
+                  </label>
+                )}
 
-              <label className="block">
-                <span className="text-xs font-medium text-slate-700">
-                  Email Address
-                </span>
-                <div className="relative mt-1.5">
-                  <Mail
-                    className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"
-                    aria-hidden="true"
-                  />
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700">
+                    Email
+                  </span>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="trader@example.com"
+                    placeholder="you@domain.com"
                     autoComplete="email"
-                    className="w-full pl-9 pr-3 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
                   />
-                </div>
-              </label>
+                </label>
 
-              <label className="block">
-                <span className="text-xs font-medium text-slate-700">
-                  Password
-                </span>
-                <div className="relative mt-1.5">
-                  <Lock
-                    className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"
-                    aria-hidden="true"
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="auth-password"
+                      className="text-xs font-medium text-slate-700"
+                    >
+                      Password
+                    </label>
+                    {mode === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => switchMode('forgot')}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="auth-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={
+                        mode === 'register'
+                          ? 'Minimum 6 characters'
+                          : 'Enter your password'
+                      }
+                      autoComplete={
+                        mode === 'register' ? 'new-password' : 'current-password'
+                      }
+                      className="w-full px-3.5 py-2.5 pr-10 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={auth.submitting}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span>
+                    {auth.submitting
+                      ? 'Please wait...'
+                      : mode === 'login'
+                      ? 'Sign in'
+                      : 'Create account'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </form>
+            </>
+          ) : (
+            /* Password Recovery Flow */
+            <>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Back to sign in</span>
+                </button>
+                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900">
+                  Recover your password
+                </h1>
+                <p className="text-[13px] text-slate-500">
+                  Verify using your saved Recovery Key, or request a 6-digit
+                  reset code via Telegram or your workspace owner.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoveryMethod('key');
+                    setLocalError(null);
+                    auth.clearError();
+                  }}
+                  className={`inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    recoveryMethod === 'key'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Recovery Key</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoveryMethod('otp');
+                    setLocalError(null);
+                    auth.clearError();
+                  }}
+                  className={`inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                    recoveryMethod === 'otp'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>6-Digit Code</span>
+                </button>
+              </div>
+
+              {displayError && (
+                <div
+                  role="alert"
+                  className="px-3.5 py-2.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-lg"
+                >
+                  {displayError}
+                </div>
+              )}
+
+              {otpStatus && (
+                <div
+                  className={`px-3.5 py-2.5 text-xs rounded-lg border ${
+                    otpStatus.kind === 'info'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-700'
+                  }`}
+                >
+                  {otpStatus.text}
+                </div>
+              )}
+
+              <form onSubmit={handleRecoverySubmit} className="space-y-4">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700">
+                    Account email
+                  </span>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@domain.com"
+                    autoComplete="email"
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
                   />
+                </label>
+
+                {recoveryMethod === 'key' ? (
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-slate-700">
+                      Recovery key
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={recoveryKey}
+                      onChange={(e) => setRecoveryKey(e.target.value)}
+                      placeholder="NA-XXXX-XXXX-XXXX-XXXX"
+                      className="w-full px-3.5 py-2.5 text-sm font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    />
+                  </label>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label
+                        htmlFor="recovery-otp"
+                        className="text-xs font-medium text-slate-700"
+                      >
+                        6-digit reset code
+                      </label>
+                      <button
+                        type="button"
+                        disabled={sendingOtp}
+                        onClick={() => void handleRequestTelegramOtp()}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 cursor-pointer"
+                      >
+                        {sendingOtp ? 'Sending...' : 'Send code to Telegram'}
+                      </button>
+                    </div>
+                    <input
+                      id="recovery-otp"
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="123456"
+                      className="w-full px-3.5 py-2.5 text-sm font-mono tracking-widest text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Use the code sent to your linked Telegram DM, or a 6-digit
+                      code issued by your workspace owner.
+                    </p>
+                  </div>
+                )}
+
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700">
+                    New password
+                  </span>
                   <input
                     type="password"
                     required
                     minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={
-                      mode === 'register'
-                        ? 'At least 6 characters'
-                        : 'Enter your password'
-                    }
-                    autoComplete={
-                      mode === 'register' ? 'new-password' : 'current-password'
-                    }
-                    className="w-full pl-9 pr-3 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    autoComplete="new-password"
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
                   />
-                </div>
-              </label>
+                </label>
 
-              <button
-                type="submit"
-                disabled={auth.submitting}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
-              >
-                <span>
-                  {auth.submitting
-                    ? 'Please wait...'
-                    : mode === 'login'
-                    ? 'Sign In to Workspace'
-                    : 'Create Account'}
-                </span>
-                <ArrowRight className="w-4 h-4" aria-hidden="true" />
-              </button>
-            </form>
-          </div>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700">
+                    Confirm new password
+                  </span>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    autoComplete="new-password"
+                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                  />
+                </label>
 
-          <p className="text-center text-xs text-slate-500">
-            Passwords are hashed with per-user scrypt salts. Broker tokens are
-            encrypted per user with AES-256-GCM on your server.
-          </p>
+                <button
+                  type="submit"
+                  disabled={auth.submitting}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span>
+                    {auth.submitting
+                      ? 'Updating password...'
+                      : 'Reset password & sign in'}
+                  </span>
+                </button>
+              </form>
+            </>
+          )}
         </div>
-      </div>
+      </main>
+
+      {/* Quiet Footer */}
+      <footer className="w-full max-w-md mx-auto text-center text-xs text-slate-400">
+        Encrypted self-hosted workspace · Per-user isolated broker vaults
+      </footer>
     </div>
   );
 };
