@@ -62,6 +62,7 @@ interface YearlyBacktestViewProps {
   onOpenCalendar?: (month?: string | null, date?: string | null) => void;
   userId?: string | null;
   serverSavedReports?: SavedBacktestReport[] | null;
+  theme?: 'dark' | 'light';
 }
 
 type DayFilter = 'all' | 'win' | 'loss' | 'notrade';
@@ -113,7 +114,15 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   onOpenCalendar,
   userId = null,
   serverSavedReports = null,
+  theme = 'dark',
 }) => {
+  const isDark = theme === 'dark';
+  const chartGridStroke = isDark ? '#1E293B' : '#e2e8f0';
+  const chartTickFill = isDark ? '#94a3b8' : '#64748b';
+  const chartZeroStroke = isDark ? '#475569' : '#94a3b8';
+  const chartPosColor = isDark ? '#10b981' : '#16a34a';
+  const chartNegColor = isDark ? '#ef4444' : '#dc2626';
+
   const [symbol, setSymbol] = useState('NSE:NIFTY50-INDEX');
   const [customSymbol, setCustomSymbol] = useState('');
   const [toDate, setToDate] = useState<string>(() => formatYYYYMMDD(new Date()));
@@ -526,10 +535,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       {/* Header */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Custom Range &amp; 1-Year Fyers Backtest
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Select any custom date range (up to 1 year) of 5-minute Fyers NSE
             data. Evaluates daily 4-candle bias, RSI({config.rsiLength}) setup,
             trailing Lower-High/Higher-Low base candle, {config.entryBufferPoints}pt
@@ -539,7 +548,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       </section>
 
       {/* Date Range & Symbol Fetch Bar */}
-      <section className="bg-white border border-slate-200 rounded-xl px-5 py-4 space-y-3">
+      <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
             <select
@@ -549,7 +558,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 setCustomSymbol('');
               }}
               aria-label="Backtest Fyers Symbol"
-              className="px-3 py-2 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               {SYMBOL_OPTIONS.map((sym) => (
                 <option key={sym} value={sym}>
@@ -564,10 +573,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               onChange={(e) => setCustomSymbol(e.target.value)}
               placeholder="Or custom symbol"
               aria-label="Custom Fyers backtest symbol"
-              className="w-40 px-3 py-2 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-40 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
               {[
                 { label: '30D', value: 30 },
                 { label: '90D', value: 90 },
@@ -580,8 +589,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                   onClick={() => applyQuickPreset(opt.value)}
                   className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                     activePresetDays === opt.value
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   {opt.label}
@@ -591,9 +600,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
               <Calendar
-                className="w-3.5 h-3.5 text-slate-400"
+                className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500"
                 aria-hidden="true"
               />
               <span>From</span>
@@ -605,11 +614,11 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                   setFromDate(e.target.value);
                   setActivePresetDays(null);
                 }}
-                className="px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
-            <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
               <span>To</span>
               <input
                 type="date"
@@ -619,7 +628,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                   setToDate(e.target.value);
                   setActivePresetDays(null);
                 }}
-                className="px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
@@ -639,7 +648,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
 
         {/* Save / Export Report Bar when results exist */}
         {backtest && fetchedRange && (
-          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
               <input
                 type="text"
@@ -647,12 +656,12 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 onChange={(e) => setReportName(e.target.value)}
                 placeholder="Report name (e.g. NIFTY 1Y Buf 1pt Max 3)"
                 aria-label="Saved report name"
-                className="flex-1 min-w-[220px] max-w-md px-3 py-1.5 text-xs text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="flex-1 min-w-[220px] max-w-md px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-slate-50 dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:bg-white dark:focus:bg-[#161D2B] focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
               <button
                 type="button"
                 onClick={handleSaveSnapshot}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white dark:text-slate-950 bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Bookmark className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Save Result</span>
@@ -675,7 +684,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               <button
                 type="button"
                 onClick={handleExportCsv}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Export CSV</span>
@@ -683,7 +692,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               <button
                 type="button"
                 onClick={handleExportJson}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Export JSON</span>
@@ -694,13 +703,13 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       </section>
 
       {errorMsg && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 text-xs text-red-700">
+        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-xl px-5 py-3.5 text-xs text-red-700 dark:text-red-300">
           {errorMsg}
         </div>
       )}
 
       {saveFeedback && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3 text-xs text-emerald-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl px-5 py-3 text-xs text-emerald-800 dark:text-emerald-300 flex flex-wrap items-center justify-between gap-3">
           <span>{saveFeedback}</span>
           <div className="flex items-center gap-3">
             {calendarJumpTarget && onOpenCalendar && (
@@ -712,7 +721,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                     calendarJumpTarget.date
                   )
                 }
-                className="font-semibold text-emerald-900 underline hover:text-emerald-700 cursor-pointer"
+                className="font-semibold text-emerald-900 dark:text-emerald-200 underline hover:text-emerald-700 dark:hover:text-emerald-100 cursor-pointer"
               >
                 View in Paper Calendar →
               </button>
@@ -723,7 +732,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 setSaveFeedback(null);
                 setCalendarJumpTarget(null);
               }}
-              className="text-emerald-700 hover:underline font-medium cursor-pointer"
+              className="text-emerald-700 dark:text-emerald-300 hover:underline font-medium cursor-pointer"
             >
               Dismiss
             </button>
@@ -753,14 +762,14 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       <section className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
         <div className="space-y-6 min-w-0">
           {!backtest ? (
-            <div className="bg-white border border-slate-200 rounded-xl px-6 py-16 text-center space-y-3">
-              <h2 className="font-display text-base font-semibold text-slate-900">
+            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-6 py-16 text-center space-y-3">
+              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                 Select Any Date Range &amp; Run Your Fyers Backtest
               </h2>
-              <p className="text-sm text-slate-600 max-w-lg mx-auto">
-                Pick a custom <strong>From</strong> and <strong>To</strong> date
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
+                Pick a custom <strong className="text-slate-900 dark:text-slate-200">From</strong> and <strong className="text-slate-900 dark:text-slate-200">To</strong> date
                 (or click 30D / 90D / 180D / 1 Year) and click{' '}
-                <strong>Run Backtest</strong>. Once fetched, tweaking Entry
+                <strong className="text-slate-900 dark:text-slate-200">Run Backtest</strong>. Once fetched, tweaking Entry
                 Buffer, Max Trades/Day, SL, or Target recalculates the entire
                 period immediately, and you can save or export the full report.
               </p>
@@ -768,24 +777,24 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
           ) : (
             <>
               {/* Primary 4-Column Period Summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-800">
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Total Net P&amp;L
                   </div>
                   <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold">
                     <span
                       className={
                         backtest.netPoints >= 0
-                          ? 'text-emerald-700'
-                          : 'text-red-600'
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
                       }
                     >
                       {backtest.netPoints >= 0 ? '+' : ''}
                       {backtest.netPoints.toFixed(1)} pts
                     </span>
                   </div>
-                  <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+                  <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                     {backtest.netRupees >= 0 ? '+₹' : '-₹'}
                     {Math.abs(backtest.netRupees).toLocaleString('en-IN', {
                       maximumFractionDigits: 0,
@@ -794,39 +803,39 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Trade Accuracy
                   </div>
-                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900">
+                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {backtest.winRatePct.toFixed(1)}%
                   </div>
-                  <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+                  <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                     Excl. Cost SL: {backtest.accuracyExclBreakevenPct.toFixed(1)}%
                   </div>
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Winning vs. Losing Trades
                   </div>
-                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900">
-                    <span className="text-emerald-700">{backtest.wins}W</span>
-                    <span className="text-slate-300 mx-1">/</span>
-                    <span className="text-red-600">{backtest.losses}L</span>
+                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    <span className="text-emerald-700 dark:text-emerald-400">{backtest.wins}W</span>
+                    <span className="text-slate-300 dark:text-slate-700 mx-1">/</span>
+                    <span className="text-red-600 dark:text-red-400">{backtest.losses}L</span>
                   </div>
-                  <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+                  <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                     {backtest.breakevens} Cost Exit · {backtest.totalTrades} total
                   </div>
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs font-medium text-slate-500">
+                  <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Max Drawdown &amp; PF
                   </div>
-                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-red-600">
+                  <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-red-600 dark:text-red-400">
                     -{backtest.maxDrawdownPoints.toFixed(1)} pts
                   </div>
-                  <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+                  <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                     Profit Factor {backtest.profitFactor.toFixed(2)} · Exp{' '}
                     {backtest.expectancyPoints >= 0 ? '+' : ''}
                     {backtest.expectancyPoints.toFixed(1)}
@@ -835,90 +844,90 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               </div>
 
               {/* Detailed Period Analysis Grid */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
+              <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Detailed Period Analysis ({fetchedRange?.fromDate} to{' '}
                     {fetchedRange?.toDate})
                   </h2>
-                  <span className="text-xs font-mono tabular-nums text-slate-500">
+                  <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                     {backtest.totalDays} trading days ·{' '}
                     {backtest.totalCandles.toLocaleString('en-IN')} candles
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-800 text-xs">
                   <div className="px-5 py-3.5 space-y-2">
-                    <div className="text-slate-500 font-medium">
+                    <div className="text-slate-500 dark:text-slate-400 font-medium">
                       Winning / Losing Days
                     </div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900">
-                      <span className="text-emerald-700">
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-emerald-700 dark:text-emerald-400">
                         {backtest.winningDays} Win
                       </span>{' '}
                       ·{' '}
-                      <span className="text-red-600">
+                      <span className="text-red-600 dark:text-red-400">
                         {backtest.losingDays} Loss
                       </span>{' '}
                       · {backtest.flatDays} Flat
                     </div>
-                    <div className="text-slate-500 font-mono tabular-nums">
+                    <div className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       Day Accuracy: {backtest.dayWinRatePct.toFixed(1)}%
                     </div>
                   </div>
 
                   <div className="px-5 py-3.5 space-y-2">
-                    <div className="text-slate-500 font-medium">
+                    <div className="text-slate-500 dark:text-slate-400 font-medium">
                       Gross Profit / Loss
                     </div>
-                    <div className="font-mono tabular-nums font-semibold">
-                      <span className="text-emerald-700">
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-emerald-700 dark:text-emerald-400">
                         +{backtest.grossProfitPoints.toFixed(1)}
                       </span>{' '}
                       /{' '}
-                      <span className="text-red-600">
+                      <span className="text-red-600 dark:text-red-400">
                         -{backtest.grossLossPoints.toFixed(1)} pts
                       </span>
                     </div>
-                    <div className="text-slate-500 font-mono tabular-nums">
+                    <div className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       Avg: +{backtest.avgWinPoints.toFixed(1)}W / -
                       {backtest.avgLossPoints.toFixed(1)}L
                     </div>
                   </div>
 
                   <div className="px-5 py-3.5 space-y-2">
-                    <div className="text-slate-500 font-medium">
+                    <div className="text-slate-500 dark:text-slate-400 font-medium">
                       Best / Worst Session
                     </div>
-                    <div className="font-mono tabular-nums font-semibold">
-                      <span className="text-emerald-700">
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-emerald-700 dark:text-emerald-400">
                         +{backtest.bestDayPoints.toFixed(1)}
                       </span>{' '}
                       /{' '}
-                      <span className="text-red-600">
+                      <span className="text-red-600 dark:text-red-400">
                         {backtest.worstDayPoints.toFixed(1)} pts
                       </span>
                     </div>
-                    <div className="text-slate-500 font-mono tabular-nums">
+                    <div className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       Avg Trades/Day: {backtest.avgTradesPerDay.toFixed(2)}
                     </div>
                   </div>
 
                   <div className="px-5 py-3.5 space-y-2">
-                    <div className="text-slate-500 font-medium">
+                    <div className="text-slate-500 dark:text-slate-400 font-medium">
                       Longest Streaks
                     </div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900">
-                      <span className="text-emerald-700">
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                      <span className="text-emerald-700 dark:text-emerald-400">
                         {backtest.maxConsecutiveWins}W
                       </span>{' '}
                       max ·{' '}
-                      <span className="text-red-600">
+                      <span className="text-red-600 dark:text-red-400">
                         {backtest.maxConsecutiveLosses}L
                       </span>{' '}
                       max
                     </div>
-                    <div className="text-slate-500 font-mono tabular-nums">
+                    <div className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       Buf {config.entryBufferPoints}pt · Max{' '}
                       {config.maxTradesPerDay}/day
                     </div>
@@ -927,25 +936,25 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               </div>
 
               {/* Cumulative Multi-Day Equity Curve */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <h2 className="font-display text-sm font-semibold text-slate-900">
+                    <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                       Cumulative Period Equity Curve ({fetchedRange?.symbol})
                     </h2>
-                    <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
                       {fetchedRange?.fromDate} to {fetchedRange?.toDate}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                     <button
                       type="button"
                       onClick={() => setUnit('points')}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                         unit === 'points'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
                       Points (pts)
@@ -955,8 +964,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                       onClick={() => setUnit('rupees')}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                         unit === 'rupees'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
                       Rupees (₹)
@@ -980,12 +989,12 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                         >
                           <stop
                             offset={zeroOffset}
-                            stopColor="#16a34a"
+                            stopColor={chartPosColor}
                             stopOpacity={1}
                           />
                           <stop
                             offset={zeroOffset}
-                            stopColor="#dc2626"
+                            stopColor={chartNegColor}
                             stopOpacity={1}
                           />
                         </linearGradient>
@@ -998,22 +1007,22 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                         >
                           <stop
                             offset={0}
-                            stopColor="#16a34a"
+                            stopColor={chartPosColor}
                             stopOpacity={0.22}
                           />
                           <stop
                             offset={zeroOffset}
-                            stopColor="#16a34a"
+                            stopColor={chartPosColor}
                             stopOpacity={0.03}
                           />
                           <stop
                             offset={zeroOffset}
-                            stopColor="#dc2626"
+                            stopColor={chartNegColor}
                             stopOpacity={0.03}
                           />
                           <stop
                             offset={1}
-                            stopColor="#dc2626"
+                            stopColor={chartNegColor}
                             stopOpacity={0.22}
                           />
                         </linearGradient>
@@ -1022,23 +1031,23 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                       <CartesianGrid
                         strokeDasharray="3 3"
                         vertical={false}
-                        stroke="#e2e8f0"
+                        stroke={chartGridStroke}
                       />
                       <XAxis
                         dataKey="date"
                         tick={{
                           fontSize: 11,
-                          fill: '#64748b',
+                          fill: chartTickFill,
                           fontFamily: 'var(--font-mono)',
                         }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e2e8f0' }}
+                        axisLine={{ stroke: chartGridStroke }}
                         minTickGap={36}
                       />
                       <YAxis
                         tick={{
                           fontSize: 11,
-                          fill: '#64748b',
+                          fill: chartTickFill,
                           fontFamily: 'var(--font-mono)',
                         }}
                         tickLine={false}
@@ -1054,7 +1063,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                       />
                       <ReferenceLine
                         y={0}
-                        stroke="#94a3b8"
+                        stroke={chartZeroStroke}
                         strokeDasharray="4 3"
                       />
                       <Tooltip
@@ -1071,17 +1080,17 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                             drawdownPoints: number;
                           };
                           return (
-                            <div className="bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-sm text-xs space-y-1 font-mono tabular-nums">
-                              <div className="font-semibold text-slate-900">
+                            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2.5 shadow-sm text-xs space-y-1 font-mono tabular-nums">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">
                                 {row.date} ({row.bias})
                               </div>
                               <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Day P&amp;L</span>
+                                <span className="text-slate-500 dark:text-slate-400">Day P&amp;L</span>
                                 <span
                                   className={
                                     row.dayPoints >= 0
-                                      ? 'text-emerald-700 font-semibold'
-                                      : 'text-red-600 font-semibold'
+                                      ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                                      : 'text-red-600 dark:text-red-400 font-semibold'
                                   }
                                 >
                                   {row.dayPoints >= 0 ? '+' : ''}
@@ -1090,10 +1099,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                 </span>
                               </div>
                               <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">
+                                <span className="text-slate-500 dark:text-slate-400">
                                   Cumulative
                                 </span>
-                                <span className="text-slate-900 font-semibold">
+                                <span className="text-slate-900 dark:text-slate-100 font-semibold">
                                   {unit === 'points'
                                     ? `${
                                         row.cumulativePoints >= 0 ? '+' : ''
@@ -1106,8 +1115,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                 </span>
                               </div>
                               <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Drawdown</span>
-                                <span className="text-slate-700">
+                                <span className="text-slate-500 dark:text-slate-400">Drawdown</span>
+                                <span className="text-slate-700 dark:text-slate-300">
                                   {row.drawdownPoints.toFixed(1)} pts
                                 </span>
                               </div>
@@ -1133,9 +1142,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               </div>
 
               {/* Monthly Breakdown Bar Chart */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-200">
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
+              <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800">
+                  <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Monthly Net P&amp;L Breakdown
                   </h2>
                 </div>
@@ -1148,30 +1157,31 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                       <CartesianGrid
                         strokeDasharray="3 3"
                         vertical={false}
-                        stroke="#e2e8f0"
+                        stroke={chartGridStroke}
                       />
                       <XAxis
                         dataKey="label"
                         tick={{
                           fontSize: 11,
-                          fill: '#64748b',
+                          fill: chartTickFill,
                           fontFamily: 'var(--font-mono)',
                         }}
                         tickLine={false}
-                        axisLine={{ stroke: '#e2e8f0' }}
+                        axisLine={{ stroke: chartGridStroke }}
                       />
                       <YAxis
                         tick={{
                           fontSize: 11,
-                          fill: '#64748b',
+                          fill: chartTickFill,
                           fontFamily: 'var(--font-mono)',
                         }}
                         tickLine={false}
                         axisLine={false}
                         width={64}
                       />
-                      <ReferenceLine y={0} stroke="#94a3b8" />
+                      <ReferenceLine y={0} stroke={chartZeroStroke} />
                       <Tooltip
+                        cursor={{ fill: isDark ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.12)' }}
                         content={({ active, payload }) => {
                           if (!active || !payload || payload.length === 0)
                             return null;
@@ -1185,17 +1195,17 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                             netRupees: number;
                           };
                           return (
-                            <div className="bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-sm text-xs font-mono tabular-nums space-y-1">
-                              <div className="font-semibold text-slate-900">
+                            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2.5 shadow-sm text-xs font-mono tabular-nums space-y-1">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">
                                 {m.label} ({m.tradingDays} days)
                               </div>
-                              <div>
+                              <div className="text-slate-600 dark:text-slate-300">
                                 Net:{' '}
                                 <span
                                   className={
                                     m.netPoints >= 0
-                                      ? 'text-emerald-700 font-semibold'
-                                      : 'text-red-600 font-semibold'
+                                      ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                                      : 'text-red-600 dark:text-red-400 font-semibold'
                                   }
                                 >
                                   {m.netPoints >= 0 ? '+' : ''}
@@ -1205,7 +1215,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                   )
                                 </span>
                               </div>
-                              <div className="text-slate-600">
+                              <div className="text-slate-600 dark:text-slate-400">
                                 Trades: {m.tradesCount} ({m.wins}W / {m.losses}
                                 L)
                               </div>
@@ -1222,7 +1232,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                           <Cell
                             key={entry.month}
                             fill={
-                              entry.netPoints >= 0 ? '#16a34a' : '#dc2626'
+                              entry.netPoints >= 0 ? chartPosColor : chartNegColor
                             }
                           />
                         ))}
@@ -1233,12 +1243,12 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               </div>
 
               {/* Daily Session Breakdown Table */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
+              <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Daily Session Ledger ({filteredDays.length})
                   </h2>
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+                  <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                     {(
                       [
                         { id: 'all', label: 'All Days' },
@@ -1253,8 +1263,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                         onClick={() => setDayFilter(f.id)}
                         className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                           dayFilter === f.id
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
+                            ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                         }`}
                       >
                         {f.label}
@@ -1265,7 +1275,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
 
                 <div className="overflow-x-auto max-h-96">
                   <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500">
+                    <thead className="sticky top-0 bg-slate-50 dark:bg-[#0E131D] border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                       <tr>
                         <th className="py-2.5 px-4">Date</th>
                         <th className="py-2.5 px-3">Bias</th>
@@ -1277,23 +1287,23 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                         <th className="py-2.5 px-4 text-right">Chart</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
                       {filteredDays.map((day) => (
                         <tr
                           key={day.date}
-                          className="h-10 hover:bg-slate-50 transition-colors"
+                          className="h-10 hover:bg-slate-50 dark:hover:bg-[#161D2B]/60 transition-colors"
                         >
-                          <td className="px-4 font-mono tabular-nums font-semibold text-slate-900">
+                          <td className="px-4 font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
                             {day.date}
                           </td>
                           <td className="px-3 font-medium">
                             <span
                               className={
                                 day.bias === 'BULLISH'
-                                  ? 'text-emerald-700'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
                                   : day.bias === 'BEARISH'
-                                  ? 'text-red-600'
-                                  : 'text-slate-500'
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-slate-500 dark:text-slate-400'
                               }
                             >
                               {day.bias === 'PENDING'
@@ -1301,19 +1311,19 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                 : `${day.bias} (Set ${day.biasSetNumber})`}
                             </span>
                           </td>
-                          <td className="px-3 text-right font-mono tabular-nums text-slate-700">
+                          <td className="px-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
                             {day.tradesCount}
                           </td>
-                          <td className="px-3 text-right font-mono tabular-nums text-slate-600">
+                          <td className="px-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400">
                             {day.wins} / {day.losses} / {day.breakevens}
                           </td>
                           <td
                             className={`px-3 text-right font-mono tabular-nums font-semibold ${
                               day.dayPoints > 0
-                                ? 'text-emerald-700'
+                                ? 'text-emerald-700 dark:text-emerald-400'
                                 : day.dayPoints < 0
-                                ? 'text-red-600'
-                                : 'text-slate-600'
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-slate-600 dark:text-slate-400'
                             }`}
                           >
                             {day.dayPoints > 0 ? '+' : ''}
@@ -1322,10 +1332,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                           <td
                             className={`px-3 text-right font-mono tabular-nums ${
                               day.dayRupees > 0
-                                ? 'text-emerald-700'
+                                ? 'text-emerald-700 dark:text-emerald-400'
                                 : day.dayRupees < 0
-                                ? 'text-red-600'
-                                : 'text-slate-600'
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-slate-600 dark:text-slate-400'
                             }`}
                           >
                             {day.dayRupees >= 0 ? '+₹' : '-₹'}
@@ -1333,7 +1343,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                               maximumFractionDigits: 0,
                             })}
                           </td>
-                          <td className="px-3 text-right font-mono tabular-nums text-slate-800">
+                          <td className="px-3 text-right font-mono tabular-nums text-slate-800 dark:text-slate-200">
                             {day.cumulativePoints >= 0 ? '+' : ''}
                             {day.cumulativePoints.toFixed(1)}
                           </td>
@@ -1346,7 +1356,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                     handleSaveSingleDayToPaperCalendar(day.date)
                                   }
                                   title={`Save ${day.tradesCount} trades from ${day.date} to Monthly Paper Calendar`}
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 cursor-pointer"
                                 >
                                   <CalendarPlus
                                     className="w-3.5 h-3.5"
@@ -1364,7 +1374,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                                     fetchedRange?.symbol || activeSymbol
                                   )
                                 }
-                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
                               >
                                 <span>Inspect</span>
                                 <ArrowUpRight
@@ -1384,29 +1394,29 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
           )}
 
           {/* Saved Backtest Reports Comparison Table */}
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
               <div>
-                <h2 className="font-display text-sm font-semibold text-slate-900">
+                <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                   Saved Backtest Reports ({savedReports.length})
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Persisted locally in your browser to compare parameter sets
-                  and periods
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Persisted locally and synced to your workspace to compare
+                  parameter sets and periods
                 </p>
               </div>
             </div>
 
             {savedReports.length === 0 ? (
-              <div className="px-6 py-8 text-center text-xs text-slate-500">
+              <div className="px-6 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
                 No backtest snapshots saved yet. Run a period backtest above and
-                click <strong>Save Result</strong> to store it here.
+                click <strong className="text-slate-700 dark:text-slate-200">Save Result</strong> to store it here.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500">
+                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0E131D] text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                       <th className="py-2.5 px-4">Report</th>
                       <th className="py-2.5 px-3">Period</th>
                       <th className="py-2.5 px-3">Params</th>
@@ -1416,47 +1426,47 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                       <th className="py-2.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
                     {savedReports.map((rep) => (
                       <tr
                         key={rep.id}
-                        className="h-11 hover:bg-slate-50 transition-colors"
+                        className="h-11 hover:bg-slate-50 dark:hover:bg-[#161D2B]/60 transition-colors"
                       >
                         <td className="px-4">
-                          <div className="font-semibold text-slate-900">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100">
                             {rep.name}
                           </div>
-                          <div className="text-[11px] text-slate-500">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
                             {rep.savedAt}
                           </div>
                         </td>
-                        <td className="px-3 font-mono tabular-nums text-slate-600 whitespace-nowrap">
+                        <td className="px-3 font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {rep.fromDate} → {rep.toDate}
                         </td>
-                        <td className="px-3 font-mono tabular-nums text-slate-600 whitespace-nowrap">
+                        <td className="px-3 font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           Buf {rep.config.entryBufferPoints} · SL{' '}
                           {rep.config.stopLossPoints} · T{' '}
                           {rep.config.targetPoints} · Max{' '}
                           {rep.config.maxTradesPerDay}/d
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums whitespace-nowrap">
-                          <span className="text-emerald-700 font-semibold">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
                             {rep.summary.wins}W
                           </span>{' '}
                           /{' '}
-                          <span className="text-red-600 font-semibold">
+                          <span className="text-red-600 dark:text-red-400 font-semibold">
                             {rep.summary.losses}L
                           </span>{' '}
                           / {rep.summary.breakevens}BE
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                        <td className="px-3 text-right font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {rep.summary.winRatePct.toFixed(1)}%
                         </td>
                         <td
                           className={`px-3 text-right font-mono tabular-nums font-semibold whitespace-nowrap ${
                             rep.summary.netPoints >= 0
-                              ? 'text-emerald-700'
-                              : 'text-red-600'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}
                         >
                           {rep.summary.netPoints >= 0 ? '+' : ''}
@@ -1473,7 +1483,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleApplySavedConfig(rep)}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+                              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
                             >
                               Load
                             </button>
@@ -1481,7 +1491,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                               type="button"
                               onClick={() => handleDeleteSavedReport(rep.id)}
                               aria-label={`Delete saved report ${rep.name}`}
-                              className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
+                              className="p-1 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>

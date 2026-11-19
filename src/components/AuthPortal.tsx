@@ -5,19 +5,27 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Moon,
   Send,
+  Sun,
 } from 'lucide-react';
 import { SaaSAuthController } from '../hooks/useSaaSAuth';
 import { BrandLogo } from './BrandLogo';
 
 interface AuthPortalProps {
   auth: SaaSAuthController;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 type AuthMode = 'login' | 'register' | 'forgot';
 type RecoveryMethod = 'key' | 'otp';
 
-export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
+export const AuthPortal: React.FC<AuthPortalProps> = ({
+  auth,
+  theme = 'dark',
+  onToggleTheme,
+}) => {
   const [mode, setMode] = useState<AuthMode>(
     auth.registeredUsers === 0 ? 'register' : 'login'
   );
@@ -105,43 +113,65 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
   };
 
   const displayError = localError || auth.authError;
+  const inputCls =
+    'w-full px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500';
 
   return (
-    <div className="min-h-screen bg-[#F7F8FA] flex flex-col justify-between px-4 sm:px-6 py-8">
+    <div className="min-h-screen bg-[#F7F8FA] dark:bg-[#0B0F17] flex flex-col justify-between px-4 sm:px-6 py-8">
       {/* Quiet Top Brand Row */}
       <div className="w-full max-w-md mx-auto flex items-center justify-between">
         <BrandLogo size="md" />
-        <span className="text-xs text-slate-400">NIFTY 5m Desk</span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            NIFTY 5m Desk
+          </span>
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={
+                theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+              }
+              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-lg cursor-pointer"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Centered Focused Auth Card */}
       <main className="w-full max-w-[420px] mx-auto my-8">
-        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-7 sm:p-8 space-y-6">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-7 sm:p-8 space-y-6">
           {mode !== 'forgot' ? (
             <>
               <div className="space-y-1.5">
-                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900">
+                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
                   {mode === 'login'
                     ? 'Sign in to NeoAlgo'
                     : auth.registeredUsers === 0
                     ? 'Create workspace owner account'
                     : 'Create your account'}
                 </h1>
-                <p className="text-[13px] text-slate-500">
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
                   {mode === 'login'
                     ? 'Enter your credentials to access your trading desk.'
                     : 'Set up your private strategy, broker, and alert workspace.'}
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
                   className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                     mode === 'login'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   Sign in
@@ -151,8 +181,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                   onClick={() => switchMode('register')}
                   className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                     mode === 'register'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   Create account
@@ -162,7 +192,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
               {displayError && (
                 <div
                   role="alert"
-                  className="px-3.5 py-2.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-lg"
+                  className="px-3.5 py-2.5 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200/80 dark:border-red-500/30 rounded-lg"
                 >
                   {displayError}
                 </div>
@@ -171,7 +201,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
               <form onSubmit={handlePrimarySubmit} className="space-y-4">
                 {mode === 'register' && (
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-700">
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                       Full name
                     </span>
                     <input
@@ -183,13 +213,13 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Aarav Sharma"
                       autoComplete="name"
-                      className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
+                      className={inputCls}
                     />
                   </label>
                 )}
 
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-slate-700">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                     Email
                   </span>
                   <input
@@ -199,7 +229,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@domain.com"
                     autoComplete="email"
-                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
+                    className={inputCls}
                   />
                 </label>
 
@@ -207,7 +237,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                   <div className="flex items-center justify-between">
                     <label
                       htmlFor="auth-password"
-                      className="text-xs font-medium text-slate-700"
+                      className="text-xs font-medium text-slate-700 dark:text-slate-300"
                     >
                       Password
                     </label>
@@ -215,7 +245,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       <button
                         type="button"
                         onClick={() => switchMode('forgot')}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+                        className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
                       >
                         Forgot password?
                       </button>
@@ -237,13 +267,13 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       autoComplete={
                         mode === 'register' ? 'new-password' : 'current-password'
                       }
-                      className="w-full px-3.5 py-2.5 pr-10 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-colors"
+                      className={`${inputCls} pr-10`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                     >
                       {showPassword ? (
                         <EyeOff className="w-4 h-4" />
@@ -257,7 +287,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                 <button
                   type="submit"
                   disabled={auth.submitting}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
                 >
                   <span>
                     {auth.submitting
@@ -277,21 +307,21 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Back to sign in</span>
                 </button>
-                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900">
+                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
                   Recover your password
                 </h1>
-                <p className="text-[13px] text-slate-500">
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
                   Verify using your saved Recovery Key, or request a 6-digit
                   reset code via Telegram or your workspace owner.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                 <button
                   type="button"
                   onClick={() => {
@@ -301,8 +331,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                   }}
                   className={`inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                     recoveryMethod === 'key'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   <KeyRound className="w-3.5 h-3.5" aria-hidden="true" />
@@ -317,8 +347,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                   }}
                   className={`inline-flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                     recoveryMethod === 'otp'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   <Send className="w-3.5 h-3.5" aria-hidden="true" />
@@ -329,7 +359,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
               {displayError && (
                 <div
                   role="alert"
-                  className="px-3.5 py-2.5 text-xs text-red-700 bg-red-50 border border-red-200/80 rounded-lg"
+                  className="px-3.5 py-2.5 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200/80 dark:border-red-500/30 rounded-lg"
                 >
                   {displayError}
                 </div>
@@ -339,8 +369,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                 <div
                   className={`px-3.5 py-2.5 text-xs rounded-lg border ${
                     otpStatus.kind === 'info'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-red-50 border-red-200 text-red-700'
+                      ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                      : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300'
                   }`}
                 >
                   {otpStatus.text}
@@ -349,7 +379,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
 
               <form onSubmit={handleRecoverySubmit} className="space-y-4">
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-slate-700">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                     Account email
                   </span>
                   <input
@@ -359,13 +389,13 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@domain.com"
                     autoComplete="email"
-                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    className={inputCls}
                   />
                 </label>
 
                 {recoveryMethod === 'key' ? (
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-700">
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                       Recovery key
                     </span>
                     <input
@@ -374,7 +404,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       value={recoveryKey}
                       onChange={(e) => setRecoveryKey(e.target.value)}
                       placeholder="NA-XXXX-XXXX-XXXX-XXXX"
-                      className="w-full px-3.5 py-2.5 text-sm font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                      className={`font-mono ${inputCls}`}
                     />
                   </label>
                 ) : (
@@ -382,7 +412,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                     <div className="flex items-center justify-between gap-2">
                       <label
                         htmlFor="recovery-otp"
-                        className="text-xs font-medium text-slate-700"
+                        className="text-xs font-medium text-slate-700 dark:text-slate-300"
                       >
                         6-digit reset code
                       </label>
@@ -390,7 +420,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                         type="button"
                         disabled={sendingOtp}
                         onClick={() => void handleRequestTelegramOtp()}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 cursor-pointer"
+                        className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 disabled:opacity-50 cursor-pointer"
                       >
                         {sendingOtp ? 'Sending...' : 'Send code to Telegram'}
                       </button>
@@ -404,9 +434,9 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                       value={otpCode}
                       onChange={(e) => setOtpCode(e.target.value)}
                       placeholder="123456"
-                      className="w-full px-3.5 py-2.5 text-sm font-mono tracking-widest text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                      className={`font-mono tracking-widest ${inputCls}`}
                     />
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Use the code sent to your linked Telegram DM, or a 6-digit
                       code issued by your workspace owner.
                     </p>
@@ -414,7 +444,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                 )}
 
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-slate-700">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                     New password
                   </span>
                   <input
@@ -425,12 +455,12 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Minimum 6 characters"
                     autoComplete="new-password"
-                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    className={inputCls}
                   />
                 </label>
 
                 <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-slate-700">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                     Confirm new password
                   </span>
                   <input
@@ -441,14 +471,14 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                     placeholder="Re-enter new password"
                     autoComplete="new-password"
-                    className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    className={inputCls}
                   />
                 </label>
 
                 <button
                   type="submit"
                   disabled={auth.submitting}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
                 >
                   <span>
                     {auth.submitting
@@ -463,7 +493,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ auth }) => {
       </main>
 
       {/* Quiet Footer */}
-      <footer className="w-full max-w-md mx-auto text-center text-xs text-slate-400">
+      <footer className="w-full max-w-md mx-auto text-center text-xs text-slate-400 dark:text-slate-500">
         Encrypted self-hosted workspace · Per-user isolated broker vaults
       </footer>
     </div>

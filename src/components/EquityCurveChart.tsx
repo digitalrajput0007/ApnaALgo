@@ -10,10 +10,12 @@ import {
   YAxis,
 } from 'recharts';
 import { BacktestResult, StrategyConfig } from '../types/strategy';
+import { formatINR } from '../utils/formatters';
 
 interface EquityCurveChartProps {
   result: BacktestResult;
   config: StrategyConfig;
+  theme?: 'dark' | 'light';
 }
 
 interface EquityPoint {
@@ -34,7 +36,9 @@ function round2(val: number): number {
 export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
   result,
   config,
+  theme = 'dark',
 }) => {
+  const isDark = theme === 'dark';
   const [unit, setUnit] = useState<'points' | 'rupees'>('points');
 
   const multiplier = useMemo(() => {
@@ -133,31 +137,33 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
     if (unit === 'points') {
       return `${pts >= 0 ? '+' : ''}${pts.toFixed(1)} pts`;
     }
-    return `${rs >= 0 ? '+₹' : '-₹'}${Math.abs(rs).toLocaleString('en-IN', {
-      maximumFractionDigits: 0,
-    })}`;
+    return formatINR(rs);
   };
+
+  const gridStroke = isDark ? '#1E293B' : '#e2e8f0';
+  const tickFill = isDark ? '#94a3b8' : '#64748b';
+  const refStroke = isDark ? '#475569' : '#94a3b8';
 
   return (
     <section
       aria-label="Daily Equity Curve"
-      className="bg-white border border-slate-200 rounded-xl overflow-hidden"
+      className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden"
     >
       {/* Header Bar */}
-      <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+      <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-sm font-semibold text-slate-900">
+          <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
             Daily Intraday Equity Curve
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
             {latestPoint ? (
               <>
                 Current:{' '}
                 <span
                   className={
                     latestPoint.equityPoints >= 0
-                      ? 'text-emerald-700 font-semibold'
-                      : 'text-red-600 font-semibold'
+                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                      : 'text-red-600 dark:text-red-400 font-semibold'
                   }
                 >
                   {formatMetric(
@@ -176,14 +182,14 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
         </div>
 
         {/* Interactive Unit Toggle */}
-        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+        <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
           <button
             type="button"
             onClick={() => setUnit('points')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
               unit === 'points'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             Points (pts)
@@ -193,8 +199,8 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
             onClick={() => setUnit('rupees')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
               unit === 'rupees'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             Rupees (₹)
@@ -205,7 +211,7 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
       {/* Recharts Container */}
       <div className="px-4 pt-5 pb-3">
         {series.length === 0 ? (
-          <div className="h-56 flex items-center justify-center text-sm text-slate-500">
+          <div className="h-56 flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
             No candles available to plot the intraday equity curve.
           </div>
         ) : (
@@ -223,8 +229,8 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
                     x2="0"
                     y2="1"
                   >
-                    <stop offset={zeroOffset} stopColor="#16a34a" stopOpacity={1} />
-                    <stop offset={zeroOffset} stopColor="#dc2626" stopOpacity={1} />
+                    <stop offset={zeroOffset} stopColor="#10b981" stopOpacity={1} />
+                    <stop offset={zeroOffset} stopColor="#ef4444" stopOpacity={1} />
                   </linearGradient>
                   <linearGradient
                     id="equityFillSplit"
@@ -233,60 +239,58 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
                     x2="0"
                     y2="1"
                   >
-                    <stop offset={0} stopColor="#16a34a" stopOpacity={0.22} />
+                    <stop offset={0} stopColor="#10b981" stopOpacity={0.22} />
                     <stop
                       offset={zeroOffset}
-                      stopColor="#16a34a"
+                      stopColor="#10b981"
                       stopOpacity={0.03}
                     />
                     <stop
                       offset={zeroOffset}
-                      stopColor="#dc2626"
+                      stopColor="#ef4444"
                       stopOpacity={0.03}
                     />
-                    <stop offset={1} stopColor="#dc2626" stopOpacity={0.22} />
+                    <stop offset={1} stopColor="#ef4444" stopOpacity={0.22} />
                   </linearGradient>
                 </defs>
 
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#e2e8f0"
+                  stroke={gridStroke}
                 />
 
                 <XAxis
                   dataKey="time"
                   tick={{
                     fontSize: 11,
-                    fill: '#64748b',
+                    fill: tickFill,
                     fontFamily: 'var(--font-mono)',
                   }}
                   tickLine={false}
-                  axisLine={{ stroke: '#e2e8f0' }}
+                  axisLine={{ stroke: gridStroke }}
                   minTickGap={24}
                 />
 
                 <YAxis
                   tick={{
                     fontSize: 11,
-                    fill: '#64748b',
+                    fill: tickFill,
                     fontFamily: 'var(--font-mono)',
                   }}
                   tickLine={false}
                   axisLine={false}
-                  width={62}
+                  width={68}
                   tickFormatter={(val: number) =>
                     unit === 'points'
                       ? `${val > 0 ? '+' : ''}${val}`
-                      : `${val >= 0 ? '₹' : '-₹'}${Math.abs(val).toLocaleString(
-                          'en-IN'
-                        )}`
+                      : formatINR(val, { signed: false })
                   }
                 />
 
                 <ReferenceLine
                   y={0}
-                  stroke="#94a3b8"
+                  stroke={refStroke}
                   strokeDasharray="4 3"
                   strokeWidth={1.25}
                 />
@@ -298,46 +302,54 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
                     }
                     const pt = payload[0].payload as EquityPoint;
                     return (
-                      <div className="bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-sm text-xs space-y-1">
-                        <div className="font-mono font-semibold text-slate-900">
+                      <div className="bg-white dark:bg-[#161D2B] border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2.5 shadow-lg text-xs space-y-1">
+                        <div className="font-mono font-semibold text-slate-900 dark:text-slate-100">
                           {pt.time} IST
                         </div>
                         <div className="flex items-center justify-between gap-5 font-mono tabular-nums">
-                          <span className="text-slate-500">Total Equity</span>
+                          <span className="text-slate-500 dark:text-slate-400">
+                            Total Equity
+                          </span>
                           <span
                             className={`font-semibold ${
                               pt.equityPoints >= 0
-                                ? 'text-emerald-700'
-                                : 'text-red-600'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
                             }`}
                           >
                             {formatMetric(pt.equityPoints, pt.equityRupees)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-5 font-mono tabular-nums">
-                          <span className="text-slate-500">Realized</span>
-                          <span className="text-slate-800">
+                          <span className="text-slate-500 dark:text-slate-400">
+                            Realized
+                          </span>
+                          <span className="text-slate-800 dark:text-slate-200">
                             {pt.realizedPoints >= 0 ? '+' : ''}
                             {pt.realizedPoints.toFixed(1)} pts
                           </span>
                         </div>
                         {pt.floatingPoints !== 0 && (
                           <div className="flex items-center justify-between gap-5 font-mono tabular-nums">
-                            <span className="text-slate-500">Open MTM</span>
-                            <span className="text-slate-800">
+                            <span className="text-slate-500 dark:text-slate-400">
+                              Open MTM
+                            </span>
+                            <span className="text-slate-800 dark:text-slate-200">
                               {pt.floatingPoints >= 0 ? '+' : ''}
                               {pt.floatingPoints.toFixed(1)} pts
                             </span>
                           </div>
                         )}
                         <div className="flex items-center justify-between gap-5 font-mono tabular-nums">
-                          <span className="text-slate-500">Drawdown</span>
-                          <span className="text-slate-700">
+                          <span className="text-slate-500 dark:text-slate-400">
+                            Drawdown
+                          </span>
+                          <span className="text-slate-700 dark:text-slate-300">
                             {pt.drawdownPoints.toFixed(1)} pts
                           </span>
                         </div>
                         {pt.note && (
-                          <div className="pt-1 mt-1 border-t border-slate-100 text-[11px] font-medium text-blue-700">
+                          <div className="pt-1 mt-1 border-t border-slate-100 dark:border-slate-700 text-[11px] font-medium text-blue-600 dark:text-blue-400">
                             {pt.note}
                           </div>
                         )}
@@ -368,7 +380,7 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
                       return <g key={`empty-dot-${payload?.index ?? 0}`} />;
                     }
                     const fillColor =
-                      payload.equityPoints >= 0 ? '#16a34a' : '#dc2626';
+                      payload.equityPoints >= 0 ? '#10b981' : '#ef4444';
                     return (
                       <circle
                         key={`event-dot-${payload.index}`}
@@ -376,15 +388,15 @@ export const EquityCurveChart: React.FC<EquityCurveChartProps> = ({
                         cy={cy}
                         r={3.5}
                         fill={fillColor}
-                        stroke="#ffffff"
+                        stroke={isDark ? '#111622' : '#ffffff'}
                         strokeWidth={1.5}
                       />
                     );
                   }}
                   activeDot={{
                     r: 4.5,
-                    fill: '#0f172a',
-                    stroke: '#ffffff',
+                    fill: isDark ? '#e2e8f0' : '#0f172a',
+                    stroke: isDark ? '#111622' : '#ffffff',
                     strokeWidth: 1.5,
                   }}
                 />

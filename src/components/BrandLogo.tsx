@@ -77,14 +77,14 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
       <div className="leading-none">
         <span
-          className={`font-display font-bold tracking-tight text-slate-900 ${
+          className={`font-display font-bold tracking-tight text-slate-900 dark:text-slate-100 ${
             size === 'sm' ? 'text-base' : 'text-[17px]'
           }`}
         >
-          Neo<span className="text-blue-600">Algo</span>
+          Neo<span className="text-blue-600 dark:text-blue-400">Algo</span>
         </span>
         {showSubtitle && (
-          <div className="text-[11px] font-medium text-slate-500 mt-0.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
             Quantitative Desk
           </div>
         )}

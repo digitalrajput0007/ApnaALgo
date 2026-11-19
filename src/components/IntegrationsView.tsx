@@ -34,21 +34,21 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#161D2B] rounded-lg">
           <button
             type="button"
             onClick={() => setSubTab('brokers')}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
               subTab === 'brokers'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Brokers</span>
             {fyersFeed.status?.authenticated && (
-              <span className="font-mono text-[11px] text-emerald-700 ml-0.5">
+              <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 ml-0.5">
                 · 1
               </span>
             )}
@@ -59,21 +59,21 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
             onClick={() => setSubTab('telegram')}
             className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
               subTab === 'telegram'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <Send className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Telegram Alerts</span>
             {telegram.isArmedForLive && (
-              <span className="font-mono text-[11px] text-emerald-700 ml-0.5">
+              <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 ml-0.5">
                 · {telegram.activeDestinationCount}
               </span>
             )}
           </button>
         </div>
 
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-slate-400">
           All broker &amp; bot credentials are encrypted per account on your
           server
         </span>

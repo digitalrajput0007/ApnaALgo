@@ -381,10 +381,10 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
       {/* Page Header */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Paper Trade Monthly Calendar
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Review saved backtested and paper-traded executions day by day,
             track weekly P&amp;L consistency, and maintain trade notes.
           </p>
@@ -404,7 +404,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Export CSV</span>
@@ -415,13 +415,13 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
 
       {/* Manual Trade Entry Form (collapsible) */}
       {showAddForm && (
-        <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-sm font-semibold text-slate-900">
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                 Log Paper Trade to Calendar
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 P&amp;L in Rupees is automatically calculated using your active
                 lot sizing ({config.lots} lot × {config.lotSize} qty).
               </p>
@@ -430,7 +430,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
               type="button"
               onClick={() => setShowAddForm(false)}
               aria-label="Close manual trade form"
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md cursor-pointer"
+              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -441,7 +441,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 items-end"
           >
             <label className="block col-span-1 sm:col-span-2">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Trade Date
               </span>
               <input
@@ -449,24 +449,24 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 required
                 value={manualDate}
                 onChange={(e) => setManualDate(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block col-span-1 sm:col-span-2">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Symbol
               </span>
               <input
                 type="text"
                 value={manualSymbol}
                 onChange={(e) => setManualSymbol(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Side
               </span>
               <select
@@ -474,7 +474,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 onChange={(e) =>
                   setManualDirection(e.target.value as 'LONG' | 'SHORT')
                 }
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-medium text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
                 <option value="LONG">LONG</option>
                 <option value="SHORT">SHORT</option>
@@ -482,31 +482,31 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             </label>
 
             <label className="block">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Entry Time
               </span>
               <input
                 type="time"
                 value={manualEntryTime}
                 onChange={(e) => setManualEntryTime(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Exit Time
               </span>
               <input
                 type="time"
                 value={manualExitTime}
                 onChange={(e) => setManualExitTime(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Exit Reason
               </span>
               <select
@@ -514,7 +514,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 onChange={(e) =>
                   setManualReason(e.target.value as TradeExitReason)
                 }
-                className="mt-1 w-full px-2.5 py-1.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
                 <option value="TARGET_HIT">Target Hit</option>
                 <option value="STRICT_SL_HIT">Strict SL</option>
@@ -524,7 +524,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             </label>
 
             <label className="block col-span-1 sm:col-span-2">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Entry Price
               </span>
               <input
@@ -533,12 +533,12 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 required
                 value={manualEntryPrice}
                 onChange={(e) => setManualEntryPrice(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block col-span-1 sm:col-span-2">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Exit Price
               </span>
               <input
@@ -547,12 +547,12 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 required
                 value={manualExitPrice}
                 onChange={(e) => setManualExitPrice(e.target.value)}
-                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <label className="block col-span-2 sm:col-span-3">
-              <span className="text-[11px] font-medium text-slate-600">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
                 Trade Note (optional)
               </span>
               <input
@@ -560,13 +560,13 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 value={manualNote}
                 onChange={(e) => setManualNote(e.target.value)}
                 placeholder="Clean breakout after lower-high base shift..."
-                className="mt-1 w-full px-2.5 py-1.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
             <button
               type="submit"
-              className="col-span-2 sm:col-span-1 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              className="col-span-2 sm:col-span-1 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
             >
               Save Trade
             </button>
@@ -576,17 +576,17 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
 
       {/* Empty State when Paper Journal has 0 entries */}
       {journal.entries.length === 0 ? (
-        <section className="bg-white border border-slate-200 rounded-xl px-6 py-14 text-center space-y-4">
-          <div className="mx-auto w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+        <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-6 py-14 text-center space-y-4">
+          <div className="mx-auto w-11 h-11 rounded-xl bg-slate-100 dark:bg-[#161D2B] flex items-center justify-center text-slate-600 dark:text-slate-300">
             <CalendarDays className="w-5 h-5" aria-hidden="true" />
           </div>
           <div className="space-y-1.5 max-w-lg mx-auto">
-            <h2 className="font-display text-base font-semibold text-slate-900">
+            <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
               No Paper Trades Saved to Calendar Yet
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               Run a custom range or 1-year Fyers backtest and click{' '}
-              <strong>Save to Paper Calendar</strong> to populate every month
+              <strong className="text-slate-900 dark:text-slate-200">Save to Paper Calendar</strong> to populate every month
               automatically, or save trades from your current Strategy Lab
               session.
             </p>
@@ -604,7 +604,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
               <button
                 type="button"
                 onClick={onSaveCurrentLabSession}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <span>
                   Save Current Lab Session ({currentLabTradesCount} trades)
@@ -614,7 +614,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             <button
               type="button"
               onClick={onGoToLab}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-[#161D2B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
             >
               <span>Open Strategy Lab</span>
             </button>
@@ -623,19 +623,19 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
       ) : (
         <>
           {/* Calendar Control Toolbar */}
-          <section className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
             {/* Month Navigation */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setActiveMonth((m) => shiftMonth(m, -1))}
                 aria-label="Previous month"
-                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-[#161D2B] rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" aria-hidden="true" />
               </button>
 
-              <div className="min-w-[168px] text-center font-display text-sm font-bold text-slate-900">
+              <div className="min-w-[168px] text-center font-display text-sm font-bold text-slate-900 dark:text-slate-100">
                 {formatMonthLong(activeMonth)}
               </div>
 
@@ -643,7 +643,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 type="button"
                 onClick={() => setActiveMonth((m) => shiftMonth(m, 1))}
                 aria-label="Next month"
-                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-[#161D2B] rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -651,7 +651,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveMonth(todayIst.slice(0, 7))}
-                className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#161D2B] rounded-lg transition-colors cursor-pointer"
               >
                 Today
               </button>
@@ -659,7 +659,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
 
             {/* Filters & Unit Toggle */}
             <div className="flex flex-wrap items-center gap-2.5">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                 {(
                   [
                     { id: 'ALL', label: 'All Sources' },
@@ -674,8 +674,8 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                     onClick={() => setSourceFilter(opt.id)}
                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                       sourceFilter === opt.id
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
                     {opt.label}
@@ -683,14 +683,14 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 ))}
               </div>
 
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                 <button
                   type="button"
                   onClick={() => setUnit('points')}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                     unit === 'points'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   Points
@@ -700,8 +700,8 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                   onClick={() => setUnit('rupees')}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                     unit === 'rupees'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
                   Rupees (₹)
@@ -713,25 +713,25 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
           {/* 4-Column Monthly Performance KPI Strip */}
           <section
             aria-label="Monthly Paper Trade Summary"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-800"
           >
             <div className="px-5 py-4">
-              <div className="text-xs font-medium text-slate-500">
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {formatMonthLabel(activeMonth)} Net P&amp;L
               </div>
               <div
                 className={`mt-1.5 font-mono tabular-nums text-2xl font-bold ${
                   monthStats.netPoints > 0
-                    ? 'text-emerald-700'
+                    ? 'text-emerald-700 dark:text-emerald-400'
                     : monthStats.netPoints < 0
-                    ? 'text-red-600'
-                    : 'text-slate-900'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-slate-900 dark:text-slate-100'
                 }`}
               >
                 {monthStats.netPoints >= 0 ? '+' : ''}
                 {monthStats.netPoints.toFixed(1)} pts
               </div>
-              <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+              <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                 {monthStats.netRupees >= 0 ? '+₹' : '-₹'}
                 {Math.abs(monthStats.netRupees).toLocaleString('en-IN', {
                   maximumFractionDigits: 0,
@@ -740,36 +740,36 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             </div>
 
             <div className="px-5 py-4">
-              <div className="text-xs font-medium text-slate-500">
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Monthly Accuracy &amp; PF
               </div>
               <div className="mt-1.5 flex items-baseline gap-2.5">
-                <span className="font-mono tabular-nums text-2xl font-bold text-slate-900">
+                <span className="font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {monthStats.winRatePct.toFixed(1)}%
                 </span>
-                <span className="text-xs font-mono tabular-nums text-slate-500">
+                <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   PF {monthStats.profitFactor.toFixed(2)}
                 </span>
               </div>
-              <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+              <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                 {monthStats.wins}W / {monthStats.losses}L /{' '}
                 {monthStats.breakevens}BE ({monthStats.totalTrades} trades)
               </div>
             </div>
 
             <div className="px-5 py-4">
-              <div className="text-xs font-medium text-slate-500">
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Active Trading Days
               </div>
-              <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900">
+              <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-slate-100">
                 {monthStats.tradingDays} days
               </div>
-              <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
-                <span className="text-emerald-700">
+              <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
+                <span className="text-emerald-700 dark:text-emerald-400">
                   {monthStats.winningDays} Green
                 </span>{' '}
                 ·{' '}
-                <span className="text-red-600">
+                <span className="text-red-600 dark:text-red-400">
                   {monthStats.losingDays} Red
                 </span>{' '}
                 · {monthStats.flatDays} Flat
@@ -777,11 +777,11 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             </div>
 
             <div className="px-5 py-4">
-              <div className="text-xs font-medium text-slate-500">
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 Best / Worst Day
               </div>
               <div className="mt-1.5 font-mono tabular-nums text-sm font-semibold space-y-0.5">
-                <div className="text-emerald-700">
+                <div className="text-emerald-700 dark:text-emerald-400">
                   {monthStats.bestDay
                     ? `${formatPnl(
                         monthStats.bestDay.points,
@@ -789,7 +789,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                       )} (${monthStats.bestDay.date.slice(5)})`
                     : '--'}
                 </div>
-                <div className="text-red-600">
+                <div className="text-red-600 dark:text-red-400">
                   {monthStats.worstDay && monthStats.worstDay.points < 0
                     ? `${formatPnl(
                         monthStats.worstDay.points,
@@ -804,16 +804,16 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
           {/* Main Calendar + Day Trade Inspector Split */}
           <section className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
             {/* Monthly Calendar Grid with Weekly Totals */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-slate-600">
+            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-slate-600 dark:text-slate-400">
                   Click any day tile to inspect individual paper trades and add
                   execution notes.
                 </div>
 
                 <div className="flex items-center gap-3 text-[11px]">
                   {confirmClearScope === 'month' ? (
-                    <span className="inline-flex items-center gap-2 text-red-700">
+                    <span className="inline-flex items-center gap-2 text-red-700 dark:text-red-400">
                       <span>Clear {formatMonthLabel(activeMonth)}?</span>
                       <button
                         type="button"
@@ -828,7 +828,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmClearScope(null)}
-                        className="text-slate-500 hover:text-slate-800 cursor-pointer"
+                        className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -837,14 +837,14 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setConfirmClearScope('month')}
-                      className="text-slate-500 hover:text-red-600 font-medium cursor-pointer"
+                      className="text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 font-medium cursor-pointer"
                     >
                       Clear Month
                     </button>
                   ) : null}
 
                   {confirmClearScope === 'all' ? (
-                    <span className="inline-flex items-center gap-2 text-red-700">
+                    <span className="inline-flex items-center gap-2 text-red-700 dark:text-red-400">
                       <span>Clear all {journal.entries.length} trades?</span>
                       <button
                         type="button"
@@ -859,7 +859,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmClearScope(null)}
-                        className="text-slate-500 hover:text-slate-800 cursor-pointer"
+                        className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -868,7 +868,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setConfirmClearScope('all')}
-                      className="text-slate-400 hover:text-red-600 font-medium cursor-pointer"
+                      className="text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 font-medium cursor-pointer"
                     >
                       Clear All
                     </button>
@@ -879,13 +879,13 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
               <div className="overflow-x-auto">
                 <div className="min-w-[680px] p-4 space-y-2">
                   {/* Weekday Header Row + Week Total */}
-                  <div className="grid grid-cols-8 gap-2 text-[11px] font-semibold text-slate-500 px-1">
+                  <div className="grid grid-cols-8 gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400 px-1">
                     {WEEKDAYS.map((wd) => (
                       <div key={wd} className="text-center">
                         {wd}
                       </div>
                     ))}
-                    <div className="text-center text-slate-700">Week</div>
+                    <div className="text-center text-slate-700 dark:text-slate-300">Week</div>
                   </div>
 
                   {/* Calendar Week Rows */}
@@ -914,24 +914,24 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                           const isToday = cell.date === todayIst;
 
                           let tileStyle =
-                            'bg-white border-slate-200/80 hover:bg-slate-50';
+                            'bg-white dark:bg-[#111622] border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-[#161D2B]';
                           if (!cell.inMonth) {
                             tileStyle =
-                              'bg-slate-50/40 border-slate-100 text-slate-300';
+                              'bg-slate-50/40 dark:bg-[#0B0F17]/60 border-slate-100 dark:border-slate-800/50 text-slate-300 dark:text-slate-700';
                           } else if (bucket) {
                             if (bucket.netPoints > 0.5) {
                               tileStyle =
-                                'bg-emerald-50/80 border-emerald-200 hover:bg-emerald-50';
+                                'bg-emerald-50/80 dark:bg-emerald-500/12 border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-50 dark:hover:bg-emerald-500/20';
                             } else if (bucket.netPoints < -0.5) {
                               tileStyle =
-                                'bg-red-50/80 border-red-200 hover:bg-red-50';
+                                'bg-red-50/80 dark:bg-red-500/12 border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/20';
                             } else {
                               tileStyle =
-                                'bg-amber-50/70 border-amber-200 hover:bg-amber-50';
+                                'bg-amber-50/70 dark:bg-amber-500/12 border-amber-200 dark:border-amber-500/30 hover:bg-amber-50 dark:hover:bg-amber-500/20';
                             }
                           } else if (cell.isWeekend) {
                             tileStyle =
-                              'bg-slate-50/70 border-slate-200/60 hover:bg-slate-100/60';
+                              'bg-slate-50/70 dark:bg-[#0E131D] border-slate-200/60 dark:border-slate-800/70 hover:bg-slate-100/60 dark:hover:bg-[#161D2B]';
                           }
 
                           return (
@@ -946,7 +946,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                               }}
                               className={`min-h-[82px] p-2 rounded-lg border text-left flex flex-col justify-between transition-colors cursor-pointer ${tileStyle} ${
                                 isSelected
-                                  ? 'ring-2 ring-blue-600 ring-offset-1'
+                                  ? 'ring-2 ring-blue-600 dark:ring-blue-500 ring-offset-1 dark:ring-offset-[#111622]'
                                   : ''
                               }`}
                             >
@@ -954,16 +954,16 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                                 <span
                                   className={`font-mono tabular-nums text-xs font-semibold ${
                                     !cell.inMonth
-                                      ? 'text-slate-300'
+                                      ? 'text-slate-300 dark:text-slate-700'
                                       : isToday
-                                      ? 'text-blue-700'
-                                      : 'text-slate-700'
+                                      ? 'text-blue-700 dark:text-blue-400'
+                                      : 'text-slate-700 dark:text-slate-200'
                                   }`}
                                 >
                                   {cell.dayNum}
                                 </span>
                                 {bucket && cell.inMonth && (
-                                  <span className="font-mono tabular-nums text-[10px] text-slate-500">
+                                  <span className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                                     {bucket.trades.length}T
                                   </span>
                                 )}
@@ -974,10 +974,10 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                                   <div
                                     className={`font-mono tabular-nums text-xs font-bold leading-tight truncate ${
                                       bucket.netPoints > 0.5
-                                        ? 'text-emerald-700'
+                                        ? 'text-emerald-700 dark:text-emerald-400'
                                         : bucket.netPoints < -0.5
-                                        ? 'text-red-600'
-                                        : 'text-amber-700'
+                                        ? 'text-red-600 dark:text-red-400'
+                                        : 'text-amber-700 dark:text-amber-400'
                                     }`}
                                   >
                                     {formatPnl(
@@ -986,12 +986,12 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                                       true
                                     )}
                                   </div>
-                                  <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                                  <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                                     {bucket.wins}W/{bucket.losses}L
                                   </div>
                                 </div>
                               ) : (
-                                <div className="text-[10px] text-slate-300">
+                                <div className="text-[10px] text-slate-300 dark:text-slate-700">
                                   {cell.inMonth && !cell.isWeekend ? '—' : ''}
                                 </div>
                               )}
@@ -1000,8 +1000,8 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                         })}
 
                         {/* Weekly Summary Tile */}
-                        <div className="min-h-[82px] p-2 rounded-lg border border-slate-200 bg-slate-50/90 flex flex-col justify-between">
-                          <div className="text-[10px] font-medium text-slate-500">
+                        <div className="min-h-[82px] p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-[#0E131D] flex flex-col justify-between">
+                          <div className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
                             Wk {wIdx + 1}
                           </div>
                           {weekTrades > 0 ? (
@@ -1009,20 +1009,20 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                               <div
                                 className={`font-mono tabular-nums text-xs font-bold leading-tight truncate ${
                                   weekPts > 0.5
-                                    ? 'text-emerald-700'
+                                    ? 'text-emerald-700 dark:text-emerald-400'
                                     : weekPts < -0.5
-                                    ? 'text-red-600'
-                                    : 'text-slate-700'
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : 'text-slate-700 dark:text-slate-300'
                                 }`}
                               >
                                 {formatPnl(weekPts, weekInr, true)}
                               </div>
-                              <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                              <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                                 {weekActiveDays}d · {weekTrades}T
                               </div>
                             </div>
                           ) : (
-                            <div className="font-mono text-[11px] text-slate-400">
+                            <div className="font-mono text-[11px] text-slate-400 dark:text-slate-600">
                               —
                             </div>
                           )}
@@ -1035,13 +1035,13 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             </div>
 
             {/* Right Panel: Selected Day Trade Inspector */}
-            <aside className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-2">
+            <aside className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
+                  <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {selectedDate ? `Session ${selectedDate}` : 'Day Inspector'}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
                     {selectedDayBucket
                       ? `${selectedDayBucket.trades.length} trade${
                           selectedDayBucket.trades.length === 1 ? '' : 's'
@@ -1056,7 +1056,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenManualForm(selectedDate)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>Add</span>
@@ -1067,14 +1067,14 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
               {selectedDayBucket ? (
                 <>
                   {/* Selected Day Summary Bar */}
-                  <div className="px-5 py-3 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between gap-3">
+                  <div className="px-5 py-3 bg-slate-50/70 dark:bg-[#0E131D] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[11px] text-slate-500">Day Net P&amp;L</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">Day Net P&amp;L</div>
                       <div
                         className={`font-mono tabular-nums text-base font-bold ${
                           selectedDayBucket.netPoints >= 0
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }`}
                       >
                         {selectedDayBucket.netPoints >= 0 ? '+' : ''}
@@ -1093,37 +1093,37 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                       onClick={() =>
                         journal.deleteDayEntries(selectedDayBucket.date)
                       }
-                      className="text-xs font-medium text-slate-500 hover:text-red-600 cursor-pointer"
+                      className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer"
                     >
                       Clear Day
                     </button>
                   </div>
 
                   {/* Individual Saved Paper Trades */}
-                  <div className="divide-y divide-slate-200 max-h-[540px] overflow-y-auto">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800 max-h-[540px] overflow-y-auto">
                     {selectedDayBucket.trades.map((trade, idx) => (
                       <div key={trade.id} className="px-5 py-3.5 space-y-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-2 text-xs font-mono tabular-nums">
-                              <span className="font-semibold text-slate-500">
+                              <span className="font-semibold text-slate-500 dark:text-slate-400">
                                 #{idx + 1}
                               </span>
                               <span
                                 className={`font-bold ${
                                   trade.direction === 'LONG'
-                                    ? 'text-emerald-700'
-                                    : 'text-red-600'
+                                    ? 'text-emerald-700 dark:text-emerald-400'
+                                    : 'text-red-600 dark:text-red-400'
                                 }`}
                               >
                                 {trade.direction}
                               </span>
-                              <span className="text-slate-400">·</span>
-                              <span className="text-slate-700">
+                              <span className="text-slate-400 dark:text-slate-600">·</span>
+                              <span className="text-slate-700 dark:text-slate-300">
                                 {trade.entryTime}–{trade.exitTime || '--'}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500">
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
                               {trade.symbol} · {formatSourceLabel(trade.source)}
                             </div>
                           </div>
@@ -1133,16 +1133,16 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                               <div
                                 className={`text-xs font-bold ${
                                   trade.pnlPoints > 0.5
-                                    ? 'text-emerald-700'
+                                    ? 'text-emerald-700 dark:text-emerald-400'
                                     : trade.pnlPoints < -0.5
-                                    ? 'text-red-600'
-                                    : 'text-amber-700'
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : 'text-amber-700 dark:text-amber-400'
                                 }`}
                               >
                                 {trade.pnlPoints >= 0 ? '+' : ''}
                                 {trade.pnlPoints.toFixed(1)} pts
                               </div>
-                              <div className="text-[11px] text-slate-500">
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400">
                                 {trade.pnlRupees >= 0 ? '+₹' : '-₹'}
                                 {Math.abs(trade.pnlRupees).toLocaleString(
                                   'en-IN',
@@ -1154,7 +1154,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                               type="button"
                               onClick={() => journal.deleteEntry(trade.id)}
                               aria-label="Delete paper trade"
-                              className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
+                              className="p-1 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded cursor-pointer"
                             >
                               <Trash2
                                 className="w-3.5 h-3.5"
@@ -1164,16 +1164,16 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono tabular-nums text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-100 dark:border-slate-800/80 rounded-lg px-3 py-2">
                           <div>
                             Entry:{' '}
-                            <span className="text-slate-900 font-semibold">
+                            <span className="text-slate-900 dark:text-slate-100 font-semibold">
                               {trade.entryPrice.toFixed(2)}
                             </span>
                           </div>
                           <div>
                             Exit:{' '}
-                            <span className="text-slate-900 font-semibold">
+                            <span className="text-slate-900 dark:text-slate-100 font-semibold">
                               {trade.exitPrice !== undefined
                                 ? trade.exitPrice.toFixed(2)
                                 : '--'}
@@ -1181,20 +1181,20 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                           </div>
                           <div>
                             Outcome:{' '}
-                            <span className="font-sans font-medium text-slate-800">
+                            <span className="font-sans font-medium text-slate-800 dark:text-slate-200">
                               {formatExitLabel(trade.exitReason)}
                             </span>
                           </div>
                           <div>
                             RSI(2):{' '}
-                            <span className="text-slate-900">
+                            <span className="text-slate-900 dark:text-slate-100">
                               {trade.signalRsi.toFixed(1)}
                             </span>
                           </div>
                         </div>
 
                         {trade.configSnapshot && (
-                          <div className="text-[11px] font-mono tabular-nums text-slate-500">
+                          <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                             SL {trade.configSnapshot.stopLossPoints} / Tgt{' '}
                             {trade.configSnapshot.targetPoints} · RSI &lt;
                             {trade.configSnapshot.rsiBuyThreshold}/&gt;
@@ -1211,7 +1211,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                           }
                           placeholder="Add trade execution note..."
                           aria-label={`Execution note for trade ${idx + 1}`}
-                          className="w-full px-2.5 py-1.5 text-xs text-slate-800 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                          className="w-full px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
                         />
                       </div>
                     ))}
@@ -1219,7 +1219,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 </>
               ) : (
                 <div className="px-5 py-10 text-center space-y-2">
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Select any green or red date tile on the calendar to review
                     saved trades, or log a manual paper trade for this day.
                   </p>
@@ -1229,25 +1229,25 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
           </section>
 
           {/* Monthly Rollup Index Table (Quick Month Jump across 1Y) */}
-          <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="font-display text-sm font-semibold text-slate-900">
+                <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                   Monthly Performance Directory ({filteredMonthlyBuckets.length}{' '}
                   months)
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Click any month row to jump directly to that month in the
                   calendar
                 </p>
               </div>
-              <div className="text-xs font-mono tabular-nums text-slate-600">
+              <div className="text-xs font-mono tabular-nums text-slate-600 dark:text-slate-400">
                 All-Time Saved:{' '}
                 <span
                   className={`font-semibold ${
                     journal.stats.netPoints >= 0
-                      ? 'text-emerald-700'
-                      : 'text-red-600'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
                   }`}
                 >
                   {journal.stats.netPoints >= 0 ? '+' : ''}
@@ -1260,7 +1260,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0E131D] text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                     <th className="py-2.5 px-4">Month</th>
                     <th className="py-2.5 px-3 text-right">Days (G / R)</th>
                     <th className="py-2.5 px-3 text-right">Trades</th>
@@ -1271,7 +1271,7 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                     <th className="py-2.5 px-4 text-right">Net P&amp;L (₹)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
                   {filteredMonthlyBuckets.map((m) => {
                     const isCurrent = m.month === activeMonth;
                     return (
@@ -1279,35 +1279,37 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                         key={m.month}
                         onClick={() => setActiveMonth(m.month)}
                         className={`h-10 transition-colors cursor-pointer ${
-                          isCurrent ? 'bg-blue-50/70' : 'hover:bg-slate-50'
+                          isCurrent
+                            ? 'bg-blue-50/70 dark:bg-blue-500/15'
+                            : 'hover:bg-slate-50 dark:hover:bg-[#161D2B]/60'
                         }`}
                       >
-                        <td className="px-4 font-display font-semibold text-slate-900 whitespace-nowrap">
+                        <td className="px-4 font-display font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {m.label}
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums text-slate-600 whitespace-nowrap">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap">
                           {m.tradingDays}{' '}
-                          <span className="text-slate-400">
+                          <span className="text-slate-400 dark:text-slate-500">
                             ({m.winningDays}G / {m.losingDays}R)
                           </span>
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums text-slate-700">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
                           {m.tradesCount}
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums text-slate-600 whitespace-nowrap">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {m.wins} / {m.losses} / {m.breakevens}
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums text-slate-900 font-medium">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-900 dark:text-slate-100 font-medium">
                           {m.winRatePct.toFixed(1)}%
                         </td>
-                        <td className="px-3 text-right font-mono tabular-nums text-slate-700">
+                        <td className="px-3 text-right font-mono tabular-nums text-slate-700 dark:text-slate-300">
                           {m.profitFactor.toFixed(2)}
                         </td>
                         <td
                           className={`px-3 text-right font-mono tabular-nums font-semibold whitespace-nowrap ${
                             m.netPoints >= 0
-                              ? 'text-emerald-700'
-                              : 'text-red-600'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}
                         >
                           {m.netPoints >= 0 ? '+' : ''}
@@ -1316,8 +1318,8 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                         <td
                           className={`px-4 text-right font-mono tabular-nums font-semibold whitespace-nowrap ${
                             m.netRupees >= 0
-                              ? 'text-emerald-700'
-                              : 'text-red-600'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}
                         >
                           {m.netRupees >= 0 ? '+₹' : '-₹'}

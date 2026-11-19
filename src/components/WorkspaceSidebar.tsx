@@ -82,13 +82,13 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white border-r border-slate-200/90">
+    <div className="flex flex-col h-full bg-white dark:bg-[#0E131D] border-r border-slate-200/90 dark:border-slate-800/90">
       {/* Brand Header */}
-      <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200/80 shrink-0">
+      <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800/90 shrink-0">
         <button
           type="button"
           onClick={() => handleSelect('dashboard')}
-          className="text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/15 rounded-md"
+          className="text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 rounded-md"
         >
           <BrandLogo size="sm" />
         </button>
@@ -97,7 +97,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           type="button"
           onClick={onCloseMobile}
           aria-label="Close navigation menu"
-          className="lg:hidden p-1.5 text-slate-500 hover:text-slate-900 rounded-md cursor-pointer"
+          className="lg:hidden p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-md cursor-pointer"
         >
           <X className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -119,20 +119,22 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
                 onClick={() => handleSelect(item.id)}
                 className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-[13px] rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
                   isActive
-                    ? 'bg-slate-100 text-slate-950 font-semibold'
-                    : 'text-slate-600 font-medium hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-slate-100 dark:bg-[#182032] text-slate-950 dark:text-slate-50 font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-50 dark:hover:bg-[#141B29] hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 <span className="inline-flex items-center gap-2.5 min-w-0">
                   <Icon
                     className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-blue-600' : 'text-slate-400'
+                      isActive
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-slate-400 dark:text-slate-500'
                     }`}
                   />
                   <span className="truncate">{item.label}</span>
                 </span>
                 {item.meta && (
-                  <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                  <span className="font-mono tabular-nums text-[11px] text-slate-400 dark:text-slate-500">
                     {item.meta}
                   </span>
                 )}
@@ -142,19 +144,21 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
         </div>
 
         {/* Bottom Workspace Settings Link */}
-        <div className="pt-3 border-t border-slate-100 space-y-1">
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
           <button
             type="button"
             onClick={() => handleSelect('settings')}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'settings'
-                ? 'bg-slate-100 text-slate-950 font-semibold'
-                : 'text-slate-600 font-medium hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-slate-100 dark:bg-[#182032] text-slate-950 dark:text-slate-50 font-semibold'
+                : 'text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-50 dark:hover:bg-[#141B29] hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
             <Settings
               className={`w-4 h-4 shrink-0 ${
-                activeTab === 'settings' ? 'text-blue-600' : 'text-slate-400'
+                activeTab === 'settings'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-slate-400 dark:text-slate-500'
               }`}
             />
             <span>Settings</span>
@@ -162,22 +166,25 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
         </div>
       </nav>
 
-      {/* Quiet Live Stream Strip (only when streaming) + Profile Footer */}
-      <div className="p-3 border-t border-slate-200/80 space-y-2.5 shrink-0 bg-[#FCFCFD]">
+      {/* Live Stream Strip (only when streaming) + Profile Footer */}
+      <div className="p-3 border-t border-slate-200/80 dark:border-slate-800/90 space-y-2.5 shrink-0 bg-[#FCFCFD] dark:bg-[#0B0F17]">
         {fyersFeed.isStreaming && (
-          <div className="px-2.5 py-2 rounded-lg bg-emerald-50 border border-emerald-200/80 flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-emerald-800">
+          <div className="px-2.5 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/80 dark:border-emerald-500/30 flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-emerald-800 dark:text-emerald-300">
             <span className="inline-flex items-center gap-1.5 min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
               <span className="truncate font-semibold">
                 {fyersFeed.latestQuote
-                  ? fyersFeed.latestQuote.ltp.toFixed(2)
+                  ? fyersFeed.latestQuote.ltp.toLocaleString('en-IN', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
                   : 'Live feed'}
               </span>
             </span>
             <button
               type="button"
               onClick={fyersFeed.stopStream}
-              className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-sans font-semibold shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 hover:text-red-700 font-sans font-semibold shrink-0 cursor-pointer"
             >
               <Square
                 className="w-2.5 h-2.5 fill-current"
@@ -192,7 +199,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           <button
             type="button"
             onClick={() => handleSelect('settings')}
-            className="flex items-center gap-2.5 min-w-0 flex-1 text-left p-1 rounded-lg hover:bg-slate-100/80 transition-colors cursor-pointer"
+            className="flex items-center gap-2.5 min-w-0 flex-1 text-left p-1 rounded-lg hover:bg-slate-100/80 dark:hover:bg-[#141B29] transition-colors cursor-pointer"
           >
             <UserAvatar
               name={user.name}
@@ -200,10 +207,10 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
               size="sm"
             />
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-900 truncate">
+              <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                 {user.name}
               </div>
-              <div className="text-[11px] text-slate-500 truncate">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 {user.email}
               </div>
             </div>
@@ -214,7 +221,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             onClick={onSignOut}
             title="Sign out"
             aria-label="Sign out"
-            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors shrink-0 cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors shrink-0 cursor-pointer"
           >
             <LogOut className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -237,7 +244,7 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           aria-label="Workspace navigation"
         >
           <div
-            className="fixed inset-0 bg-slate-900/35 backdrop-blur-[1px]"
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-[1px]"
             onClick={onCloseMobile}
           />
           <div className="relative w-[256px] max-w-[82vw] h-full z-10 shadow-xl">

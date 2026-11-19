@@ -49,7 +49,6 @@ function compressAvatarToDataUrl(file: File): Promise<string> {
           reject(new Error('Canvas unavailable.'));
           return;
         }
-        // Center-crop to square
         const minDim = Math.min(img.width, img.height);
         const sx = (img.width - minDim) / 2;
         const sy = (img.height - minDim) / 2;
@@ -292,21 +291,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'developer', label: 'Developer Export', icon: Code2 },
   ];
 
+  const inputCls =
+    'w-full px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 placeholder:text-slate-400 dark:placeholder:text-slate-500';
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
             Settings
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Manage your profile, account security, password recovery, and Python
             exports.
           </p>
         </div>
 
         {/* Clean Segmented Section Tabs */}
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#161D2B] rounded-lg">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = section === item.id;
@@ -317,8 +319,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onClick={() => setSection(item.id)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                   active
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" aria-hidden="true" />
@@ -331,12 +333,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* SECTION 1: PROFILE & AVATAR */}
       {section === 'profile' && (
-        <div className="max-w-3xl bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-200">
-            <h2 className="font-display text-sm font-semibold text-slate-900">
+        <div className="max-w-3xl bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+            <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
               Profile Details
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Personalize how your account appears across your workspace.
             </p>
           </div>
@@ -354,17 +356,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   aria-label="Upload profile photo"
-                  className="absolute inset-0 rounded-full bg-slate-900/50 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                  className="absolute inset-0 rounded-full bg-slate-900/55 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
                 >
                   <Camera className="w-5 h-5" aria-hidden="true" />
                 </button>
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-medium text-slate-900">
+                <div className="text-xs font-medium text-slate-900 dark:text-slate-100">
                   Profile picture
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   PNG, JPG, or WebP. Automatically cropped to a crisp square.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
@@ -378,7 +380,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   >
                     <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>{avatarPreview ? 'Change photo' : 'Upload photo'}</span>
@@ -388,7 +390,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setAvatarPreview(null)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 rounded-lg transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Remove</span>
@@ -398,9 +400,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                   Full name
                 </span>
                 <input
@@ -410,25 +412,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   maxLength={80}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                  className={inputCls}
                 />
               </label>
 
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                   Email address
                 </span>
                 <input
                   type="email"
                   value={user.email}
                   disabled
-                  className="w-full px-3.5 py-2 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg cursor-not-allowed"
+                  className="w-full px-3.5 py-2 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg cursor-not-allowed"
                 />
               </label>
             </div>
 
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-slate-700">
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Trading focus / headline
               </span>
               <input
@@ -437,18 +439,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder="e.g. NIFTY 5m Intraday Momentum & Index Options"
-                className="w-full px-3.5 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                className={inputCls}
               />
             </label>
 
-            <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
-              <div className="text-xs text-slate-500">
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 Role:{' '}
-                <span className="font-medium text-slate-800 capitalize">
+                <span className="font-medium text-slate-800 dark:text-slate-200 capitalize">
                   {user.role}
                 </span>{' '}
                 · Member since{' '}
-                <span className="font-mono tabular-nums text-slate-700">
+                <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
                   {joinedLabel}
                 </span>
               </div>
@@ -456,7 +458,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="submit"
                 disabled={savingProfile || !profileDirty}
-                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-45 rounded-lg transition-colors cursor-pointer"
               >
                 {savingProfile ? 'Saving...' : 'Save changes'}
               </button>
@@ -469,22 +471,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === 'security' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
           {/* Change Password */}
-          <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h2 className="font-display text-sm font-semibold text-slate-900">
+                <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                   Change Password
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Update your account password anytime.
                 </p>
               </div>
-              <Lock className="w-4 h-4 text-slate-400" aria-hidden="true" />
+              <Lock
+                className="w-4 h-4 text-slate-400 dark:text-slate-500"
+                aria-hidden="true"
+              />
             </div>
 
             <form onSubmit={handleChangePassword} className="p-6 space-y-4">
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                   Current password
                 </span>
                 <div className="relative">
@@ -494,7 +499,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     autoComplete="current-password"
-                    className="w-full px-3.5 py-2 pr-10 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                    className={`${inputCls} pr-10`}
                   />
                   <button
                     type="button"
@@ -502,7 +507,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     aria-label={
                       showPasswords ? 'Hide passwords' : 'Show passwords'
                     }
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                   >
                     {showPasswords ? (
                       <EyeOff className="w-4 h-4" />
@@ -514,7 +519,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
 
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                   New password
                 </span>
                 <input
@@ -525,12 +530,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
                   autoComplete="new-password"
-                  className="w-full px-3.5 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                  className={inputCls}
                 />
               </label>
 
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                   Confirm new password
                 </span>
                 <input
@@ -541,7 +546,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter new password"
                   autoComplete="new-password"
-                  className="w-full px-3.5 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
+                  className={inputCls}
                 />
               </label>
 
@@ -549,7 +554,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="submit"
                   disabled={changingPassword}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
                 >
                   {changingPassword ? 'Updating...' : 'Update password'}
                 </button>
@@ -558,19 +563,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </section>
 
           {/* Password Recovery Key & Telegram OTP Info */}
-          <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h2 className="font-display text-sm font-semibold text-slate-900">
+                <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                   Password Recovery
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Recover access anytime from the Sign In page without relying
                   on email servers.
                 </p>
               </div>
               <KeyRound
-                className="w-4 h-4 text-slate-400"
+                className="w-4 h-4 text-slate-400 dark:text-slate-500"
                 aria-hidden="true"
               />
             </div>
@@ -578,31 +583,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="p-6 space-y-5 text-xs">
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-900">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
                     Account Recovery Key
                   </span>
-                  <span className="text-emerald-700 font-medium">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                     {user.hasRecoveryKey ? 'Active' : 'Not set'}
                   </span>
                 </div>
-                <p className="text-slate-500 leading-relaxed">
+                <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
                   Stored securely as a one-way cryptographic hash. Generate a
                   new key if you haven’t backed up your current key yet.
                 </p>
 
                 {generatedKey && (
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5">
-                    <div className="font-mono text-sm font-semibold text-slate-900 tracking-wide select-all">
+                  <div className="p-3.5 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg space-y-2.5">
+                    <div className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100 tracking-wide select-all">
                       {generatedKey}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => void handleCopyKey(generatedKey)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-md cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                       >
                         {copiedKey ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         ) : (
                           <Copy className="w-3.5 h-3.5" />
                         )}
@@ -611,7 +616,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDownloadKeyFile(generatedKey)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-md cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Download .txt</span>
@@ -624,7 +629,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   disabled={regeneratingKey}
                   onClick={() => void handleRegenerateKey()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${
@@ -640,16 +645,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 space-y-1.5">
-                <div className="font-semibold text-slate-900">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                <div className="font-semibold text-slate-900 dark:text-slate-100">
                   Telegram 6-Digit OTP Recovery
                 </div>
-                <p className="text-slate-500 leading-relaxed">
+                <p className="text-slate-500 dark:text-slate-400 leading-relaxed">
                   When a Personal DM destination is enabled in{' '}
                   <button
                     type="button"
                     onClick={onGoToIntegrations}
-                    className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
                   >
                     Integrations → Telegram Alerts
                   </button>
@@ -662,30 +667,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Owner-Only Team Recovery Panel */}
           {user.role === 'owner' && (
-            <section className="xl:col-span-2 bg-white border border-slate-200 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-2">
+            <section className="xl:col-span-2 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="font-display text-sm font-semibold text-slate-900">
+                  <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                     Workspace Users &amp; Owner Reset Codes
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     As workspace owner, you can issue a single-use 15-minute
                     6-digit reset code if a user loses both their password and
                     recovery key.
                   </p>
                 </div>
                 <Users
-                  className="w-4 h-4 text-slate-400 shrink-0"
+                  className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0"
                   aria-hidden="true"
                 />
               </div>
 
               {loadingTeam ? (
-                <div className="px-6 py-6 text-xs text-slate-500">
+                <div className="px-6 py-6 text-xs text-slate-500 dark:text-slate-400">
                   Loading workspace members...
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {teamUsers.map((member) => {
                     const issued = issuedResetCodes[member.id];
                     return (
@@ -700,13 +705,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             size="sm"
                           />
                           <div className="min-w-0">
-                            <div className="text-xs font-semibold text-slate-900 truncate">
+                            <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                               {member.name}{' '}
-                              <span className="font-normal text-slate-400 capitalize">
+                              <span className="font-normal text-slate-400 dark:text-slate-500 capitalize">
                                 · {member.role}
                               </span>
                             </div>
-                            <div className="text-xs text-slate-500 truncate">
+                            <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                               {member.email}
                             </div>
                           </div>
@@ -714,14 +719,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                         <div className="flex items-center gap-3 shrink-0">
                           {issued && (
-                            <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md select-all">
+                            <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 px-2.5 py-1 rounded-md select-all">
                               Code: {issued.code} ({issued.expiresInMinutes}m)
                             </span>
                           )}
                           <button
                             type="button"
                             onClick={() => void handleIssueTeamResetCode(member)}
-                            className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                            className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                           >
                             Issue 6-digit reset code
                           </button>
@@ -739,14 +744,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* SECTION 3: DEVELOPER EXPORT (Python Code + Modification Guide) */}
       {section === 'developer' && (
         <div className="space-y-5">
-          <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+          <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#161D2B] rounded-lg">
             <button
               type="button"
               onClick={() => setDevSubTab('code')}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                 devSubTab === 'code'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               Python Strategy Script
@@ -756,8 +761,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onClick={() => setDevSubTab('guide')}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                 devSubTab === 'guide'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               Modification Guide

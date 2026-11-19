@@ -48,6 +48,7 @@ interface NiftyChartProps {
   isLiveStreaming?: boolean;
   liveTick?: FyersQuoteTick | null;
   isFormingCandle?: boolean;
+  appTheme?: 'dark' | 'light';
 }
 
 /**
@@ -115,6 +116,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
   isLiveStreaming = false,
   liveTick = null,
   isFormingCandle = false,
+  appTheme = 'dark',
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -131,17 +133,22 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
   const prevFirstTsRef = useRef<number>(0);
   const prevLastTsRef = useRef<number>(0);
 
-  const [chartTheme, setChartTheme] = useState<'light' | 'dark'>('light');
+  const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(appTheme);
   const [magnetMode, setMagnetMode] = useState<boolean>(false);
-  const [showSets, setShowSets] = useState<boolean>(true);
+  const [showBiasGroup, setShowBiasGroup] = useState<boolean>(true);
   const [showTrades, setShowTrades] = useState<boolean>(true);
-  const [showVolume, setShowVolume] = useState<boolean>(true);
+  const [showVolume, setShowVolume] = useState<boolean>(false);
   const [hoveredCandle, setHoveredCandle] = useState<EnrichedCandle | null>(
     null
   );
   const [countdown, setCountdown] = useState<string>(() =>
     getRemainingFiveMinCountdown()
   );
+
+  // Sync chart theme whenever global app theme switches
+  useEffect(() => {
+    setChartTheme(appTheme);
+  }, [appTheme]);
 
   const candles = result.candles;
 
@@ -257,7 +264,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       0
     );
 
-    // Pane 0: Volume Histogram (bottom 18%)
+    // Pane 0: Volume Histogram (hidden by default; toggled via Vol button)
     const volumeSeries = chart.addSeries(
       HistogramSeries,
       {
@@ -265,6 +272,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
         priceScaleId: 'volume',
         lastValueVisible: false,
         priceLineVisible: false,
+        visible: false,
       },
       0
     );
@@ -353,34 +361,34 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       layout: {
         background: {
           type: ColorType.Solid,
-          color: isDark ? '#131722' : '#ffffff',
+          color: isDark ? '#111622' : '#ffffff',
         },
         textColor: isDark ? '#94a3b8' : '#475569',
         panes: {
-          separatorColor: isDark ? '#2a2e39' : '#e2e8f0',
+          separatorColor: isDark ? '#1f2937' : '#e2e8f0',
           separatorHoverColor: isDark ? '#475569' : '#94a3b8',
         },
       },
       grid: {
-        vertLines: { color: isDark ? '#1e222d' : '#f1f5f9' },
-        horzLines: { color: isDark ? '#1e222d' : '#f1f5f9' },
+        vertLines: { color: isDark ? '#192130' : '#f1f5f9' },
+        horzLines: { color: isDark ? '#192130' : '#f1f5f9' },
       },
       crosshair: {
         mode: magnetMode ? CrosshairMode.Magnet : CrosshairMode.Normal,
         vertLine: {
-          color: isDark ? '#64748b' : '#64748b',
-          labelBackgroundColor: isDark ? '#334155' : '#0f172a',
+          color: '#64748b',
+          labelBackgroundColor: isDark ? '#1e293b' : '#0f172a',
         },
         horzLine: {
-          color: isDark ? '#64748b' : '#64748b',
-          labelBackgroundColor: isDark ? '#334155' : '#0f172a',
+          color: '#64748b',
+          labelBackgroundColor: isDark ? '#1e293b' : '#0f172a',
         },
       },
       rightPriceScale: {
-        borderColor: isDark ? '#2a2e39' : '#e2e8f0',
+        borderColor: isDark ? '#1f2937' : '#e2e8f0',
       },
       timeScale: {
-        borderColor: isDark ? '#2a2e39' : '#e2e8f0',
+        borderColor: isDark ? '#1f2937' : '#e2e8f0',
       },
     });
   }, [chartTheme, magnetMode]);
@@ -543,46 +551,37 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
     rsiLinesRef.current = [sellLine, midLine, buyLine];
   }, [config.rsiBuyThreshold, config.rsiSellThreshold]);
 
-  // Update Strategy Markers (4-Candle Sets, RSI Armed, Entries, 1:1 Trail, SL/Target)
+  // Update Strategy Markers (ONLY the bias-decided group + trade entries/trails/exits)
   useEffect(() => {
     const markersPlugin = markersPluginRef.current;
     if (!markersPlugin) return;
 
     const rawMarkers: Array<SeriesMarker<Time> & { _ts: number; _order: number }> = [];
 
-    if (showSets) {
+    if (showBiasGroup) {
       for (const s of result.sets) {
+        if (!s.appliedForBias) continue;
         const ts = timestamps[s.endIndex];
         if (!ts) continue;
-        if (s.outcome === 'BULLISH' && s.appliedForBias) {
+        if (s.outcome === 'BULLISH') {
           rawMarkers.push({
             _ts: ts,
             _order: 1,
             time: ts,
             position: 'aboveBar',
-            color: '#059669',
+            color: '#10b981',
             shape: 'circle',
-            text: `S${s.setNumber} BULL (${s.greenCount}G)`,
+            text: `BIAS BULL · S${s.setNumber} (${s.greenCount}G)`,
           });
-        } else if (s.outcome === 'BEARISH' && s.appliedForBias) {
+        } else if (s.outcome === 'BEARISH') {
           rawMarkers.push({
             _ts: ts,
             _order: 1,
             time: ts,
             position: 'aboveBar',
-            color: '#dc2626',
+            color: '#ef4444',
             shape: 'circle',
-            text: `S${s.setNumber} BEAR (${s.redCount}R)`,
-          });
-        } else if (s.outcome === 'UNDECIDED') {
-          rawMarkers.push({
-            _ts: ts,
-            _order: 1,
-            time: ts,
-            position: 'aboveBar',
-            color: '#64748b',
-            shape: 'square',
-            text: `S${s.setNumber} Skip`,
+            text: `BIAS BEAR · S${s.setNumber} (${s.redCount}R)`,
           });
         }
       }
@@ -651,7 +650,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       ({ _ts: _ignoreTs, _order: _ignoreOrder, ...marker }) => marker
     );
     markersPlugin.setMarkers(cleanMarkers);
-  }, [result.sets, result.trades, timestamps, showSets, showTrades]);
+  }, [result.sets, result.trades, timestamps, showBiasGroup, showTrades]);
 
   // Update Horizontal Price Lines (Armed Trigger + Focused Trade Entry/SL/Target)
   useEffect(() => {
@@ -761,18 +760,22 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       : 0;
 
   const isDark = chartTheme === 'dark';
+  const decidedBiasSet = useMemo(
+    () => result.sets.find((s) => s.appliedForBias) ?? null,
+    [result.sets]
+  );
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/90 rounded-xl overflow-hidden">
       {/* TradingView Chart Toolbar */}
-      <div className="px-5 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800/90 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="font-display text-sm font-semibold text-slate-900">
+          <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
             {symbolLabel} · 5m
           </h2>
 
           {isLiveStreaming && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums font-semibold text-emerald-700">
+            <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>LIVE</span>
               {liveTick && (
@@ -781,22 +784,22 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
                   {liveTick.istTimeSec ? ` (${liveTick.istTimeSec})` : ''}
                 </span>
               )}
-              <span className="text-slate-400 font-normal">
+              <span className="text-slate-400 dark:text-slate-500 font-normal">
                 · Bar closes in {countdown}
               </span>
             </span>
           )}
 
           {!isLiveStreaming && isFormingCandle && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums font-semibold text-blue-700">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-mono tabular-nums font-semibold text-blue-600 dark:text-blue-400">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               <span>Forming 5m Candle</span>
             </span>
           )}
 
           {!isLiveStreaming && !isFormingCandle && (
-            <span className="text-xs font-mono tabular-nums text-slate-500">
-              {candles.length}/{totalCandlesInScenario} bars · Wilder RSI(
+            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              {candles.length}/{totalCandlesInScenario} bars · RSI(
               {config.rsiLength})
             </span>
           )}
@@ -804,25 +807,25 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
 
         {/* Interactive Overlay & TradingView Controls */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* Overlay toggles */}
           <button
             type="button"
-            onClick={() => setShowSets((v) => !v)}
+            onClick={() => setShowBiasGroup((v) => !v)}
+            title="Show or hide the bias-decided candle group marker"
             className={`px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer ${
-              showSets
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+              showBiasGroup
+                ? 'border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70'
             }`}
           >
-            Sets
+            Bias
           </button>
           <button
             type="button"
             onClick={() => setShowTrades((v) => !v)}
             className={`px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer ${
               showTrades
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                ? 'border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70'
             }`}
           >
             Trades
@@ -832,14 +835,17 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             onClick={() => setShowVolume((v) => !v)}
             className={`px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer ${
               showVolume
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                ? 'border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70'
             }`}
           >
             Vol
           </button>
 
-          <span className="w-px h-4 bg-slate-200 mx-0.5" aria-hidden="true" />
+          <span
+            className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-0.5"
+            aria-hidden="true"
+          />
 
           <button
             type="button"
@@ -847,8 +853,8 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             title="Toggle OHLC Magnet Crosshair"
             className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border transition-colors cursor-pointer ${
               magnetMode
-                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                ? 'border-blue-500/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70'
             }`}
           >
             <Magnet className="w-3.5 h-3.5" aria-hidden="true" />
@@ -860,8 +866,8 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             onClick={() =>
               setChartTheme((t) => (t === 'light' ? 'dark' : 'light'))
             }
-            title="Switch Light / Dark TradingView Theme"
-            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+            title="Toggle Chart Canvas Light / Dark"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
           >
             {isDark ? (
               <Sun className="w-3.5 h-3.5" aria-hidden="true" />
@@ -873,13 +879,16 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             </span>
           </button>
 
-          <span className="w-px h-4 bg-slate-200 mx-0.5" aria-hidden="true" />
+          <span
+            className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-0.5"
+            aria-hidden="true"
+          />
 
           <button
             type="button"
             onClick={() => handleZoom(0.75)}
             title="Zoom In"
-            className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded border border-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             <ZoomIn className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
@@ -887,7 +896,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             type="button"
             onClick={() => handleZoom(1.33)}
             title="Zoom Out"
-            className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded border border-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             <ZoomOut className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
@@ -895,7 +904,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             type="button"
             onClick={handleFitAll}
             title="Fit All Candles"
-            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded border border-slate-200 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             <Maximize2 className="w-3 h-3" aria-hidden="true" />
             <span>Fit</span>
@@ -904,7 +913,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             type="button"
             onClick={handleScrollToLive}
             title="Scroll to Latest Candle"
-            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded border border-slate-200 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
           >
             <ArrowRightToLine className="w-3 h-3" aria-hidden="true" />
             <span>Latest</span>
@@ -912,23 +921,19 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
         </div>
       </div>
 
-      {/* TradingView Chart Canvas + Floating OHLCV / RSI Legend */}
+      {/* TradingView Chart Canvas + Floating OHLC / RSI Legend */}
       <div className="relative">
         {displayCandle && (
           <div
             className={`pointer-events-none absolute top-2.5 left-3 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1.5 rounded-md text-[11px] font-mono tabular-nums backdrop-blur-xs border ${
               isDark
-                ? 'bg-[#131722]/85 border-slate-700/70 text-slate-200'
+                ? 'bg-[#0B0F17]/85 border-slate-700/80 text-slate-200'
                 : 'bg-white/90 border-slate-200/80 text-slate-700'
             }`}
           >
             <span className="font-semibold">
               {displayCandle.date ? `${displayCandle.date} ` : ''}
               {displayCandle.time} IST
-            </span>
-            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-              Set {displayCandle.setNumber} ({displayCandle.positionInSet}/
-              {config.setSize})
             </span>
             <span>
               O{' '}
@@ -952,7 +957,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
               C{' '}
               <strong
                 className={
-                  candleDelta >= 0 ? 'text-emerald-600' : 'text-red-500'
+                  candleDelta >= 0 ? 'text-emerald-500' : 'text-red-500'
                 }
               >
                 {displayCandle.close.toFixed(2)} ({candleDelta >= 0 ? '+' : ''}
@@ -967,10 +972,10 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
                   displayCandle.rsi2 === null
                     ? ''
                     : displayCandle.rsi2 < config.rsiBuyThreshold
-                    ? 'text-emerald-600'
+                    ? 'text-emerald-500'
                     : displayCandle.rsi2 > config.rsiSellThreshold
                     ? 'text-red-500'
-                    : 'text-blue-500'
+                    : 'text-blue-400'
                 }
               >
                 {displayCandle.rsi2 !== null
@@ -981,7 +986,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
             <span
               className={
                 displayCandle.biasAtClose === 'BULLISH'
-                  ? 'text-emerald-600 font-semibold'
+                  ? 'text-emerald-500 font-semibold'
                   : displayCandle.biasAtClose === 'BEARISH'
                   ? 'text-red-500 font-semibold'
                   : isDark
@@ -994,16 +999,16 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
           </div>
         )}
 
-        {/* Active Trade / Armed Status Footer Hint inside Chart */}
+        {/* Active Trade Focus Hint inside Chart */}
         {focusedTrade && selectedTradeId !== null && (
-          <div className="absolute top-2.5 right-16 z-10 flex items-center gap-2 bg-white/95 border border-slate-200 rounded-md px-2.5 py-1 text-[11px] font-mono tabular-nums text-slate-700 shadow-xs">
+          <div className="absolute top-2.5 right-16 z-10 flex items-center gap-2 bg-white/95 dark:bg-[#161D2B]/95 border border-slate-200 dark:border-slate-700 rounded-md px-2.5 py-1 text-[11px] font-mono tabular-nums text-slate-700 dark:text-slate-200 shadow-xs">
             <span>
               Focused Trade #{focusedTrade.id} ({focusedTrade.direction})
             </span>
             <button
               type="button"
               onClick={() => onSelectTrade(null)}
-              className="text-blue-600 hover:underline font-sans font-medium cursor-pointer"
+              className="text-blue-600 dark:text-blue-400 hover:underline font-sans font-medium cursor-pointer"
             >
               Clear
             </button>
@@ -1018,38 +1023,49 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
         />
       </div>
 
-      {/* Interactive 4-Candle Set Strip */}
-      {result.sets.length > 0 && (
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-semibold text-slate-500">
-              4-Candle Sets:
-            </span>
-            {result.sets.slice(0, 8).map((s) => (
-              <button
-                key={s.setNumber}
-                type="button"
-                onClick={() => handleJumpToSet(s.startIndex, s.endIndex)}
-                className={`px-2 py-1 text-[11px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
-                  s.outcome === 'BULLISH'
-                    ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100'
-                    : s.outcome === 'BEARISH'
-                    ? 'border-red-200 bg-red-50/70 text-red-800 hover:bg-red-100'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
-                }`}
+      {/* Minimal Footer: Only Bias-Decided Group Jump (no skipped set clutter) */}
+      <div className="px-5 py-2.5 border-t border-slate-200 dark:border-slate-800/90 bg-slate-50/70 dark:bg-[#0E131D] flex flex-wrap items-center justify-between gap-3 text-[11px]">
+        <div>
+          {decidedBiasSet ? (
+            <button
+              type="button"
+              onClick={() =>
+                handleJumpToSet(
+                  decidedBiasSet.startIndex,
+                  decidedBiasSet.endIndex
+                )
+              }
+              className="inline-flex items-center gap-2 font-mono tabular-nums text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+            >
+              <span className="text-slate-500 dark:text-slate-400 font-sans">
+                Bias Made:
+              </span>
+              <span
+                className={
+                  decidedBiasSet.outcome === 'BULLISH'
+                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                    : 'text-red-600 dark:text-red-400 font-semibold'
+                }
               >
-                S{s.setNumber} ({s.startTime}): {s.greenCount}G/{s.redCount}R{' '}
-                {s.outcome === 'UNDECIDED' ? 'Skip' : s.outcome.slice(0, 4)}
-              </button>
-            ))}
-          </div>
-
-          <span className="text-[11px] text-slate-500">
-            Scroll to zoom · Drag to pan · Drag price/time axis to scale ·
-            Powered by TradingView Lightweight Charts
-          </span>
+                {decidedBiasSet.outcome}
+              </span>
+              <span>
+                · Group #{decidedBiasSet.setNumber} ({decidedBiasSet.startTime}–
+                {decidedBiasSet.endTime}) · {decidedBiasSet.greenCount}G/
+                {decidedBiasSet.redCount}R
+              </span>
+            </button>
+          ) : (
+            <span className="text-slate-500 dark:text-slate-400">
+              Bias pending — waiting for qualifying 4-candle majority
+            </span>
+          )}
         </div>
-      )}
+
+        <span className="text-slate-400 dark:text-slate-500">
+          Scroll to zoom · Drag to pan
+        </span>
+      </div>
     </div>
   );
 };

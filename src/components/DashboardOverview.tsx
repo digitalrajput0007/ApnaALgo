@@ -24,10 +24,12 @@ import {
 import { SaaSUser } from '../hooks/useSaaSAuth';
 import { TelegramAlertsController } from '../hooks/useTelegramAlerts';
 import { BacktestResult, StrategyConfig } from '../types/strategy';
+import { formatINR } from '../utils/formatters';
 import { WorkspaceTab } from './TopBar';
 
 interface DashboardOverviewProps {
   user: SaaSUser;
+  theme?: 'dark' | 'light';
   config: StrategyConfig;
   labResult: BacktestResult;
   labScenarioName: string;
@@ -66,6 +68,7 @@ function buildMiniMonthCells(yearMonth: string) {
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   user,
+  theme = 'dark',
   config,
   labResult,
   labScenarioName,
@@ -77,6 +80,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onOpenCalendarDate,
   onSaveLabSessionToCalendar,
 }) => {
+  const isDark = theme === 'dark';
   const firstName = user.name.trim().split(/\s+/)[0] || user.name;
   const hasJournalData = journal.entries.length > 0;
   const activeMonth =
@@ -165,15 +169,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const recentEntries = journal.entries.slice(0, 6);
   const fyersConnected = Boolean(fyersFeed.status?.authenticated);
 
+  const gridStroke = isDark ? '#1E293B' : '#f1f5f9';
+  const axisStroke = isDark ? '#334155' : '#e2e8f0';
+  const tickFill = isDark ? '#94a3b8' : '#64748b';
+  const refStroke = isDark ? '#475569' : '#cbd5e1';
+
   return (
     <div className="space-y-6">
       {/* Calm Executive Header — Single Focused Primary Action */}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
             Welcome back, {firstName}
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {user.bio
               ? user.bio
               : hasJournalData
@@ -187,7 +196,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         <button
           type="button"
           onClick={() => onNavigate('lab')}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <Activity className="w-3.5 h-3.5" aria-hidden="true" />
           <span>Open Strategy Lab</span>
@@ -197,61 +206,62 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       {/* 4-Column Crisp KPI Strip */}
       <section
         aria-label="Workspace Summary"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 dark:divide-slate-800"
       >
         <div className="px-5 py-4">
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             {hasJournalData ? 'Journal Net P&L' : 'Session Net P&L'}
           </div>
           <div
             className={`mt-1.5 font-mono tabular-nums text-2xl font-semibold tracking-tight ${
-              kpiNetPts > 0
-                ? 'text-emerald-700'
-                : kpiNetPts < 0
-                ? 'text-red-600'
-                : 'text-slate-900'
+              kpiNetInr > 0
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : kpiNetInr < 0
+                ? 'text-red-600 dark:text-red-400'
+                : 'text-slate-900 dark:text-slate-100'
             }`}
           >
+            {formatINR(kpiNetInr)}
+          </div>
+          <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
             {kpiNetPts >= 0 ? '+' : ''}
             {kpiNetPts.toFixed(1)} pts
-          </div>
-          <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
-            {kpiNetInr >= 0 ? '+₹' : '-₹'}
-            {Math.abs(kpiNetInr).toLocaleString('en-IN', {
-              maximumFractionDigits: 0,
-            })}
           </div>
         </div>
 
         <div className="px-5 py-4">
-          <div className="text-xs text-slate-500">Win Rate &amp; Factor</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Win Rate &amp; Factor
+          </div>
           <div className="mt-1.5 flex items-baseline gap-2">
-            <span className="font-mono tabular-nums text-2xl font-semibold tracking-tight text-slate-900">
+            <span className="font-mono tabular-nums text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
               {kpiWinRate.toFixed(1)}%
             </span>
-            <span className="text-xs font-mono tabular-nums text-slate-500">
+            <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
               PF {kpiPf.toFixed(2)}
             </span>
           </div>
-          <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+          <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
             {kpiWins}W · {kpiLosses}L · DD -{kpiMaxDd.toFixed(1)}
           </div>
         </div>
 
         <div className="px-5 py-4">
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Broker Feed</span>
             <button
               type="button"
               onClick={() => onOpenIntegrationsTab('brokers')}
-              className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
             >
               {fyersConnected ? 'Manage' : 'Connect'}
             </button>
           </div>
           <div
             className={`mt-1.5 font-display text-lg font-semibold ${
-              fyersConnected ? 'text-emerald-700' : 'text-slate-700'
+              fyersConnected
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-700 dark:text-slate-300'
             }`}
           >
             {fyersConnected
@@ -260,7 +270,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 : 'Fyers Connected'
               : 'Disconnected'}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5 truncate">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
             {fyersConnected
               ? fyersFeed.status?.profile?.name ||
                 fyersFeed.status?.profile?.fy_id ||
@@ -270,24 +280,26 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         <div className="px-5 py-4">
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Telegram Alerts</span>
             <button
               type="button"
               onClick={() => onOpenIntegrationsTab('telegram')}
-              className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
             >
               Configure
             </button>
           </div>
           <div
             className={`mt-1.5 font-display text-lg font-semibold ${
-              telegram.isArmedForLive ? 'text-emerald-700' : 'text-slate-700'
+              telegram.isArmedForLive
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-700 dark:text-slate-300'
             }`}
           >
             {telegram.isArmedForLive ? 'Armed' : 'Paused'}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {telegram.activeDestinationCount > 0
               ? `${telegram.activeDestinationCount} active destination${
                   telegram.activeDestinationCount === 1 ? '' : 's'
@@ -299,15 +311,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
       {/* Analytical Split: Equity Curve + Mini Monthly Heatmap */}
       <section className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-6 items-stretch">
-        <div className="bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden flex flex-col">
-          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden flex flex-col">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-sm font-semibold text-slate-900">
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {hasJournalData
                   ? 'Cumulative Equity Curve'
                   : `Session Equity Preview · ${labScenarioName}`}
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {hasJournalData
                   ? 'Daily net points across saved paper journal sessions'
                   : 'Save a backtest or live session to build your cumulative track record'}
@@ -318,7 +330,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               <button
                 type="button"
                 onClick={onSaveLabSessionToCalendar}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/15 hover:bg-blue-100 dark:hover:bg-blue-500/25 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <BookmarkPlus className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Save to Journal</span>
@@ -328,7 +340,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
           <div className="flex-1 min-h-[250px] px-4 pt-5 pb-3">
             {equitySeries.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">
+              <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                 No executed trades available yet.
               </div>
             ) : (
@@ -347,12 +359,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     >
                       <stop
                         offset={zeroOffset}
-                        stopColor="#16a34a"
+                        stopColor="#10b981"
                         stopOpacity={1}
                       />
                       <stop
                         offset={zeroOffset}
-                        stopColor="#dc2626"
+                        stopColor="#ef4444"
                         stopOpacity={1}
                       />
                     </linearGradient>
@@ -365,46 +377,46 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     >
                       <stop
                         offset={0}
-                        stopColor="#16a34a"
-                        stopOpacity={0.16}
+                        stopColor="#10b981"
+                        stopOpacity={isDark ? 0.24 : 0.16}
                       />
                       <stop
                         offset={zeroOffset}
-                        stopColor="#16a34a"
+                        stopColor="#10b981"
                         stopOpacity={0.01}
                       />
                       <stop
                         offset={zeroOffset}
-                        stopColor="#dc2626"
+                        stopColor="#ef4444"
                         stopOpacity={0.01}
                       />
                       <stop
                         offset={1}
-                        stopColor="#dc2626"
-                        stopOpacity={0.16}
+                        stopColor="#ef4444"
+                        stopOpacity={isDark ? 0.24 : 0.16}
                       />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="#f1f5f9"
+                    stroke={gridStroke}
                   />
                   <XAxis
                     dataKey="label"
                     tick={{
                       fontSize: 11,
-                      fill: '#94a3b8',
+                      fill: tickFill,
                       fontFamily: 'var(--font-mono)',
                     }}
                     tickLine={false}
-                    axisLine={{ stroke: '#e2e8f0' }}
+                    axisLine={{ stroke: axisStroke }}
                     minTickGap={32}
                   />
                   <YAxis
                     tick={{
                       fontSize: 11,
-                      fill: '#94a3b8',
+                      fill: tickFill,
                       fontFamily: 'var(--font-mono)',
                     }}
                     tickLine={false}
@@ -414,7 +426,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   />
                   <ReferenceLine
                     y={0}
-                    stroke="#cbd5e1"
+                    stroke={refStroke}
                     strokeDasharray="4 3"
                   />
                   <Tooltip
@@ -428,28 +440,27 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         cumRupees: number;
                       };
                       return (
-                        <div className="bg-white border border-slate-200 rounded-lg px-3.5 py-2.5 shadow-sm text-xs font-mono tabular-nums space-y-1">
-                          <div className="font-semibold text-slate-900">
+                        <div className="bg-white dark:bg-[#161D2B] border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2.5 shadow-lg text-xs font-mono tabular-nums space-y-1">
+                          <div className="font-semibold text-slate-900 dark:text-slate-100">
                             {pt.label}
                           </div>
-                          <div className="text-slate-600">
+                          <div className="text-slate-600 dark:text-slate-400">
                             Session:{' '}
                             <span
                               className={
                                 pt.dayPoints >= 0
-                                  ? 'text-emerald-700 font-semibold'
-                                  : 'text-red-600 font-semibold'
+                                  ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                                  : 'text-red-600 dark:text-red-400 font-semibold'
                               }
                             >
                               {pt.dayPoints >= 0 ? '+' : ''}
                               {pt.dayPoints.toFixed(1)} pts
                             </span>
                           </div>
-                          <div className="text-slate-900 font-semibold">
+                          <div className="text-slate-900 dark:text-slate-100 font-semibold">
                             Total: {pt.cumPoints >= 0 ? '+' : ''}
                             {pt.cumPoints.toFixed(1)} pts (
-                            {pt.cumRupees >= 0 ? '+₹' : '-₹'}
-                            {Math.abs(pt.cumRupees).toLocaleString('en-IN')})
+                            {formatINR(pt.cumRupees)})
                           </div>
                         </div>
                       );
@@ -470,13 +481,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Compact Monthly Heatmap */}
-        <div className="bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden flex flex-col">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden flex flex-col">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
             <div>
-              <h2 className="font-display text-sm font-semibold text-slate-900">
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {formatMonthLabel(activeMonth)}
               </h2>
-              <p className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
+              <p className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                 {activeMonthBucket
                   ? `${activeMonthBucket.netPoints >= 0 ? '+' : ''}${activeMonthBucket.netPoints.toFixed(
                       1
@@ -489,7 +500,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <button
               type="button"
               onClick={() => onNavigate('calendar')}
-              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 whitespace-nowrap cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
             >
               <span>Journal</span>
               <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -498,7 +509,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
           <div className="p-4 flex-1 flex flex-col justify-between gap-3">
             <div className="space-y-1.5">
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400 dark:text-slate-500">
                 {MINI_WEEKDAYS.map((d, idx) => (
                   <div key={`${d}-${idx}`}>{d}</div>
                 ))}
@@ -511,17 +522,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   }
                   const b = journal.dailyMap.get(cell.date);
                   let cls =
-                    'bg-slate-50/80 border-slate-200/60 text-slate-500 hover:bg-slate-100';
+                    'bg-slate-50/80 dark:bg-[#0E131D] border-slate-200/60 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70';
                   if (b) {
                     if (b.netPoints > 0.5) {
                       cls =
-                        'bg-emerald-50 border-emerald-300/80 text-emerald-800 hover:bg-emerald-100';
+                        'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300/80 dark:border-emerald-500/35 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/25';
                     } else if (b.netPoints < -0.5) {
                       cls =
-                        'bg-red-50 border-red-300/80 text-red-700 hover:bg-red-100';
+                        'bg-red-50 dark:bg-red-500/15 border-red-300/80 dark:border-red-500/35 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/25';
                     } else {
                       cls =
-                        'bg-amber-50 border-amber-300/80 text-amber-800 hover:bg-amber-100';
+                        'bg-amber-50 dark:bg-amber-500/15 border-amber-300/80 dark:border-amber-500/35 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/25';
                     }
                   }
                   return (
@@ -553,12 +564,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
               <span>Select any day to inspect trades</span>
               <button
                 type="button"
                 onClick={() => onNavigate('backtest1y')}
-                className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
               >
                 Run Backtest
               </button>
@@ -569,16 +580,16 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
       {/* Bottom Split: Recent Trades + Concise Strategy Rules */}
       <section className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-6 items-start">
-        <div className="bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3">
-            <h2 className="font-display text-sm font-semibold text-slate-900">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+            <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
               Recent Journal Activity
             </h2>
             {recentEntries.length > 0 && (
               <button
                 type="button"
                 onClick={() => onNavigate('calendar')}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
               >
                 View all ({journal.entries.length})
               </button>
@@ -587,7 +598,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
           {recentEntries.length === 0 ? (
             <div className="px-6 py-10 text-center space-y-3">
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                 Save backtest results or live sessions into your monthly paper
                 journal to track daily consistency and drawdowns.
               </p>
@@ -595,7 +606,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigate('backtest1y')}
-                  className="px-3.5 py-2 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  className="px-3.5 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer"
                 >
                   Open Backtest
                 </button>
@@ -603,7 +614,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   <button
                     type="button"
                     onClick={onSaveLabSessionToCalendar}
-                    className="px-3.5 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
+                    className="px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   >
                     Save Current Session
                   </button>
@@ -614,7 +625,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-medium text-slate-500">
+                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-[#0E131D] text-[11px] font-medium text-slate-500 dark:text-slate-400">
                     <th className="py-2.5 px-5">Date</th>
                     <th className="py-2.5 px-3">Side</th>
                     <th className="py-2.5 px-3">Entry → Exit</th>
@@ -623,32 +634,32 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <th className="py-2.5 px-5 text-right">P&amp;L</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
                   {recentEntries.map((t) => (
                     <tr
                       key={t.id}
                       onClick={() => onOpenCalendarDate(t.date)}
-                      className="h-10 hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      className="h-10 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     >
-                      <td className="px-5 font-mono tabular-nums text-slate-900 whitespace-nowrap">
+                      <td className="px-5 font-mono tabular-nums text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {t.date}
                       </td>
                       <td
                         className={`px-3 font-mono font-medium whitespace-nowrap ${
                           t.direction === 'LONG'
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }`}
                       >
                         {t.direction}
                       </td>
-                      <td className="px-3 font-mono tabular-nums text-slate-600 whitespace-nowrap">
+                      <td className="px-3 font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {t.entryPrice.toFixed(1)} →{' '}
                         {t.exitPrice !== undefined
                           ? t.exitPrice.toFixed(1)
                           : '--'}
                       </td>
-                      <td className="px-3 text-slate-600 whitespace-nowrap">
+                      <td className="px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {t.exitReason === 'TARGET_HIT'
                           ? 'Target'
                           : t.exitReason === 'STRICT_SL_HIT'
@@ -660,10 +671,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       <td
                         className={`px-3 text-right font-mono tabular-nums font-medium whitespace-nowrap ${
                           t.pnlPoints > 0.5
-                            ? 'text-emerald-700'
+                            ? 'text-emerald-600 dark:text-emerald-400'
                             : t.pnlPoints < -0.5
-                            ? 'text-red-600'
-                            : 'text-amber-700'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-amber-600 dark:text-amber-400'
                         }`}
                       >
                         {t.pnlPoints >= 0 ? '+' : ''}
@@ -672,16 +683,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       <td
                         className={`px-5 text-right font-mono tabular-nums font-medium whitespace-nowrap ${
                           t.pnlRupees > 0
-                            ? 'text-emerald-700'
+                            ? 'text-emerald-600 dark:text-emerald-400'
                             : t.pnlRupees < 0
-                            ? 'text-red-600'
-                            : 'text-amber-700'
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-amber-600 dark:text-amber-400'
                         }`}
                       >
-                        {t.pnlRupees >= 0 ? '+₹' : '-₹'}
-                        {Math.abs(t.pnlRupees).toLocaleString('en-IN', {
-                          maximumFractionDigits: 0,
-                        })}
+                        {formatINR(t.pnlRupees)}
                       </td>
                     </tr>
                   ))}
@@ -692,38 +700,44 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
 
         {/* Saved Rules Summary */}
-        <div className="bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2">
-            <h2 className="font-display text-sm font-semibold text-slate-900">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+            <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
               Active Strategy Rules
             </h2>
             <button
               type="button"
               onClick={() => onNavigate('lab')}
-              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Edit</span>
             </button>
           </div>
 
-          <div className="divide-y divide-slate-100 text-xs">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/70 text-xs">
             <div className="px-5 py-3 flex items-center justify-between gap-3">
-              <span className="text-slate-500">Bias Filter</span>
-              <span className="font-mono tabular-nums font-medium text-slate-900">
+              <span className="text-slate-500 dark:text-slate-400">
+                Bias Filter
+              </span>
+              <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100">
                 {config.requiredMajority}/{config.setSize} Candles ·{' '}
                 {config.biasMode === 'LOCK_FOR_DAY' ? 'Lock Day' : 'Rolling'}
               </span>
             </div>
             <div className="px-5 py-3 flex items-center justify-between gap-3">
-              <span className="text-slate-500">Wilder RSI({config.rsiLength})</span>
-              <span className="font-mono tabular-nums font-medium text-slate-900">
+              <span className="text-slate-500 dark:text-slate-400">
+                Wilder RSI({config.rsiLength})
+              </span>
+              <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100">
                 &lt; {config.rsiBuyThreshold} / &gt; {config.rsiSellThreshold}
               </span>
             </div>
             <div className="px-5 py-3 flex items-center justify-between gap-3">
-              <span className="text-slate-500">Stop Loss / Target</span>
-              <span className="font-mono tabular-nums font-medium text-slate-900">
+              <span className="text-slate-500 dark:text-slate-400">
+                Stop Loss / Target
+              </span>
+              <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100">
                 {config.stopLossPoints} / {config.targetPoints} pts (1:
                 {(
                   config.targetPoints / Math.max(1, config.stopLossPoints)
@@ -732,15 +746,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </span>
             </div>
             <div className="px-5 py-3 flex items-center justify-between gap-3">
-              <span className="text-slate-500">Daily Cap</span>
-              <span className="font-mono tabular-nums font-medium text-slate-900">
+              <span className="text-slate-500 dark:text-slate-400">
+                Daily Cap
+              </span>
+              <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100">
                 Max {config.maxTradesPerDay}/day ·{' '}
                 {config.stopAfterTargetHit ? 'Halt on Target' : 'Continue'}
               </span>
             </div>
             <div className="px-5 py-3 flex items-center justify-between gap-3">
-              <span className="text-slate-500">Position Size</span>
-              <span className="font-mono tabular-nums font-medium text-slate-900">
+              <span className="text-slate-500 dark:text-slate-400">
+                Position Size
+              </span>
+              <span className="font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100">
                 {config.lots} lot ({config.lots * config.lotSize} qty)
               </span>
             </div>

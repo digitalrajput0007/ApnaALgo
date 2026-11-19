@@ -48,12 +48,18 @@ function chatTypeLabel(type: TelegramChatType): string {
 
 function ChatTypeIcon({ type }: { type: TelegramChatType }) {
   if (type === 'channel') {
-    return <Megaphone className="w-3.5 h-3.5 text-blue-600 shrink-0" />;
+    return (
+      <Megaphone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+    );
   }
   if (type === 'group') {
-    return <Users className="w-3.5 h-3.5 text-slate-600 shrink-0" />;
+    return (
+      <Users className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400 shrink-0" />
+    );
   }
-  return <User className="w-3.5 h-3.5 text-emerald-700 shrink-0" />;
+  return (
+    <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+  );
 }
 
 export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
@@ -499,27 +505,30 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
     }
   };
 
+  const fieldCls =
+    'px-3 py-2 text-xs text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-[#161D2B] placeholder:text-slate-400 dark:placeholder:text-slate-500';
+
   return (
     <div className="space-y-6">
       {/* Header Row */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             Telegram Signal Alerts
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Dispatch real-time notifications to personal DMs, groups, or
             channels the instant Bias, Entry, Stop Loss, or Target confirms.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <label className="inline-flex items-center gap-2.5 px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 cursor-pointer select-none">
+          <label className="inline-flex items-center gap-2.5 px-3.5 py-2 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
             />
             <span>{enabled ? 'Live Alerts Enabled' : 'Live Alerts Paused'}</span>
           </label>
@@ -528,7 +537,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
             type="button"
             onClick={() => void handleSave()}
             disabled={telegram.saving || !hasUnsavedChanges}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-45 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-45 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
@@ -539,47 +548,47 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
       </section>
 
       {/* Top Summary Strip */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-800">
         <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Telegram Bot
           </div>
-          <div className="mt-1.5 font-display text-base font-bold text-slate-900 truncate">
+          <div className="mt-1.5 font-display text-base font-bold text-slate-900 dark:text-slate-100 truncate">
             {telegram.config.hasBotToken
               ? telegram.config.botUsername
                 ? `@${telegram.config.botUsername}`
                 : 'Bot Token Saved'
               : 'Not Configured'}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5 font-mono truncate">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono truncate">
             {telegram.config.maskedToken || 'Paste token from @BotFather'}
           </div>
         </div>
 
         <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Active Destinations
           </div>
-          <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900">
+          <div className="mt-1.5 font-mono tabular-nums text-2xl font-bold text-slate-900 dark:text-slate-100">
             {destinations.filter((d) => d.enabled).length}{' '}
-            <span className="text-xs font-sans font-normal text-slate-500">
+            <span className="text-xs font-sans font-normal text-slate-500 dark:text-slate-400">
               / {destinations.length} saved
             </span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Personal, Group, and Channel targets
           </div>
         </div>
 
         <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Live Stream Dispatch
           </div>
           <div
             className={`mt-1.5 font-display text-base font-bold ${
               telegram.isArmedForLive && isLiveStreaming
-                ? 'text-emerald-700'
-                : 'text-slate-800'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-slate-800 dark:text-slate-200'
             }`}
           >
             {telegram.isArmedForLive && isLiveStreaming
@@ -588,14 +597,14 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
               ? 'Armed (Start Live Stream)'
               : 'Standby'}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {isLiveStreaming ? (
               `Monitoring ${activeSymbol}`
             ) : (
               <button
                 type="button"
                 onClick={onGoToLab}
-                className="text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
               >
                 Open Strategy Lab to start feed
               </button>
@@ -604,17 +613,17 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
         </div>
 
         <div className="px-5 py-4">
-          <div className="text-xs font-medium text-slate-500">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Token Security
           </div>
-          <div className="mt-1.5 flex items-center gap-1.5 font-display text-base font-bold text-slate-900">
+          <div className="mt-1.5 flex items-center gap-1.5 font-display text-base font-bold text-slate-900 dark:text-slate-100">
             <ShieldCheck
-              className="w-4 h-4 text-emerald-600 shrink-0"
+              className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0"
               aria-hidden="true"
             />
             <span>AES-256-GCM</span>
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Per-user encrypted on VPS · Dedup active
           </div>
         </div>
@@ -624,8 +633,8 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
         <div
           className={`px-4 py-3 rounded-lg border text-xs flex items-center gap-2 ${
             feedback.kind === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-700'
+              ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+              : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300'
           }`}
         >
           {feedback.kind === 'success' ? (
@@ -642,13 +651,13 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
         {/* Left Column: Bot Token, Destinations, Triggers */}
         <div className="space-y-6">
           {/* 1. Bot Token Setup */}
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <h2 className="font-display text-base font-semibold text-slate-900">
+                <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                   1. Telegram Bot Token
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Create a bot via <span className="font-mono">@BotFather</span>{' '}
                   in Telegram (<span className="font-mono">/newbot</span>) and
                   paste the HTTP API token below.
@@ -658,7 +667,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => void handleClearToken()}
-                  className="text-xs font-medium text-red-600 hover:text-red-700 cursor-pointer"
+                  className="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer"
                 >
                   Remove Saved Token
                 </button>
@@ -676,13 +685,13 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                       ? `Saved (${telegram.config.maskedToken}) — enter new token to replace`
                       : '1234567890:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
                   }
-                  className="w-full px-3.5 py-2.5 pr-10 text-xs font-mono text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                  className={`w-full px-3.5 py-2.5 pr-10 font-mono ${fieldCls}`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowToken((s) => !s)}
                   aria-label={showToken ? 'Hide token' : 'Show token'}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                 >
                   {showToken ? (
                     <EyeOff className="w-4 h-4" />
@@ -699,7 +708,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                   telegram.discovering ||
                   (!botTokenInput.trim() && !telegram.config.hasBotToken)
                 }
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-45 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-45 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -711,26 +720,32 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
               </button>
             </div>
 
-            <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-1.5">
-              <div className="font-semibold text-slate-800">
+            <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 space-y-1.5">
+              <div className="font-semibold text-slate-800 dark:text-slate-200">
                 Quick setup for Personal DM, Group, or Channel
               </div>
               <div>
-                <span className="font-medium text-slate-800">Personal DM:</span>{' '}
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  Personal DM:
+                </span>{' '}
                 Open your bot in Telegram and send{' '}
                 <span className="font-mono">/start</span>, then click{' '}
                 <span className="font-medium">Detect Chats</span>.
               </div>
               <div>
-                <span className="font-medium text-slate-800">Group:</span> Add
-                your bot to the group, send any message, then click{' '}
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  Group:
+                </span>{' '}
+                Add your bot to the group, send any message, then click{' '}
                 <span className="font-medium">Detect Chats</span> (ID starts
                 with <span className="font-mono">-</span> or{' '}
                 <span className="font-mono">-100</span>).
               </div>
               <div>
-                <span className="font-medium text-slate-800">Channel:</span> Add
-                your bot as a Channel Administrator with{' '}
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  Channel:
+                </span>{' '}
+                Add your bot as a Channel Administrator with{' '}
                 <span className="font-medium">Post Messages</span> permission.
                 Use public <span className="font-mono">@channelusername</span>{' '}
                 or post once in a private channel and click{' '}
@@ -739,11 +754,13 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
             </div>
 
             {discoverInfo && (
-              <p className="text-xs text-slate-600">{discoverInfo}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                {discoverInfo}
+              </p>
             )}
 
             {discoveredChats.length > 0 && (
-              <div className="border border-slate-200 rounded-lg divide-y divide-slate-200">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-lg divide-y divide-slate-200 dark:divide-slate-800">
                 {discoveredChats.map((chat) => {
                   const alreadyAdded = destinations.some(
                     (d) => d.chatId === chat.chatId
@@ -756,10 +773,10 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                       <div className="flex items-center gap-2.5 min-w-0">
                         <ChatTypeIcon type={chat.type} />
                         <div className="min-w-0">
-                          <div className="font-medium text-slate-900 truncate">
+                          <div className="font-medium text-slate-900 dark:text-slate-100 truncate">
                             {chat.title}
                           </div>
-                          <div className="text-[11px] text-slate-500 font-mono truncate">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
                             {chatTypeLabel(chat.type)} · {chat.chatId}
                             {chat.username ? ` · @${chat.username}` : ''}
                           </div>
@@ -769,11 +786,11 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                         type="button"
                         disabled={alreadyAdded}
                         onClick={() => handleAddDiscoveredChat(chat)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-800 whitespace-nowrap cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#161D2B] hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 text-slate-800 dark:text-slate-200 whitespace-nowrap cursor-pointer"
                       >
                         {alreadyAdded ? (
                           <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             <span>Added</span>
                           </>
                         ) : (
@@ -791,12 +808,12 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
           </section>
 
           {/* 2. Target Destinations */}
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
             <div>
-              <h2 className="font-display text-base font-semibold text-slate-900">
+              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                 2. Target Destinations
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Send alerts simultaneously to your personal Telegram, a trading
                 team group, or a broadcast channel.
               </p>
@@ -811,7 +828,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 placeholder="Label (e.g. NIFTY Signals Channel)"
-                className="px-3 py-2 text-xs text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                className={fieldCls}
               />
               <input
                 type="text"
@@ -819,12 +836,12 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                 onChange={(e) => setNewChatId(e.target.value)}
                 placeholder="Chat ID (-100...) or @channel"
                 required
-                className="px-3 py-2 text-xs font-mono text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                className={`font-mono ${fieldCls}`}
               />
               <select
                 value={newType}
                 onChange={(e) => setNewType(e.target.value as TelegramChatType)}
-                className="px-2.5 py-2 text-xs text-slate-900 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                className={fieldCls}
               >
                 <option value="private">Personal</option>
                 <option value="group">Group</option>
@@ -840,14 +857,16 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
             </form>
 
             {destinations.length === 0 ? (
-              <div className="border border-dashed border-slate-300 rounded-lg py-6 px-4 text-center text-xs text-slate-500">
+              <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-lg py-6 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
                 No Telegram destinations configured yet. Use{' '}
-                <span className="font-medium text-slate-700">Detect Chats</span>{' '}
+                <span className="font-medium text-slate-700 dark:text-slate-200">
+                  Detect Chats
+                </span>{' '}
                 above or enter a numeric Chat ID /{' '}
                 <span className="font-mono">@channel</span> manually.
               </div>
             ) : (
-              <div className="border border-slate-200 rounded-lg divide-y divide-slate-200">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-lg divide-y divide-slate-200 dark:divide-slate-800">
                 {destinations.map((dest) => (
                   <div
                     key={dest.id}
@@ -866,14 +885,14 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                             )
                           )
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 shrink-0"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600 shrink-0"
                       />
                       <ChatTypeIcon type={dest.type} />
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold text-slate-900 truncate">
+                        <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                           {dest.label}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono truncate">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
                           {chatTypeLabel(dest.type)} · {dest.chatId}
                         </div>
                       </div>
@@ -884,7 +903,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                         type="button"
                         disabled={telegram.testing}
                         onClick={() => void handleSendSample(dest.chatId)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-md cursor-pointer"
                       >
                         <Send className="w-3 h-3" aria-hidden="true" />
                         <span>Test</span>
@@ -897,7 +916,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                           )
                         }
                         aria-label={`Remove ${dest.label}`}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 rounded-md cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
@@ -909,29 +928,29 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
           </section>
 
           {/* 3. Trigger Rules */}
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
             <div>
-              <h2 className="font-display text-base font-semibold text-slate-900">
+              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                 3. Real-Time Alert Triggers
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Choose which confirmed live events automatically push a Telegram
                 message. Historical candles synced before streaming starts are
                 ignored to prevent duplicate alerts.
               </p>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {triggerDefinitions.map((item) => (
                 <label
                   key={item.key}
                   className="py-3 flex items-start justify-between gap-4 cursor-pointer"
                 >
                   <div>
-                    <div className="text-xs font-semibold text-slate-900">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
                       {item.title}
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       {item.description}
                     </div>
                   </div>
@@ -944,7 +963,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                         [item.key]: e.target.checked,
                       }))
                     }
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 shrink-0"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600 shrink-0"
                   />
                 </label>
               ))}
@@ -955,12 +974,12 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
         {/* Right Column: Live Message Preview + Delivery Log */}
         <div className="space-y-6">
           {/* Preview & Sample Dispatch */}
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-base font-semibold text-slate-900">
+              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                 Message Preview &amp; Test
               </h2>
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
                 {(
                   [
                     { id: 'BIAS_CONFIRMED', label: 'Bias' },
@@ -975,8 +994,8 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                     onClick={() => setPreviewEvent(tab.id)}
                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                       previewEvent === tab.id
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
                     {tab.label}
@@ -986,14 +1005,14 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
             </div>
 
             {/* Clean Telegram Message Bubble Preview */}
-            <div className="bg-slate-900 text-slate-100 rounded-xl p-4 space-y-1.5 font-mono text-xs leading-relaxed">
+            <div className="bg-[#0B0F17] border border-slate-800 text-slate-100 rounded-xl p-4 space-y-1.5 font-mono text-xs leading-relaxed">
               {previewLines.map((line, i) => (
                 <div
                   key={i}
                   className={
                     line.bold
                       ? 'font-sans font-bold text-white text-sm pb-0.5'
-                      : 'text-slate-200'
+                      : 'text-slate-300'
                   }
                 >
                   {line.text}
@@ -1017,34 +1036,34 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
           </section>
 
           {/* Delivery Log */}
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+          <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-base font-semibold text-slate-900">
+              <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
                 Recent Delivery Log
               </h2>
-              <span className="text-xs font-mono tabular-nums text-slate-500">
+              <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 {telegram.recentDeliveries.length} sent
               </span>
             </div>
 
             {telegram.recentDeliveries.length === 0 ? (
-              <div className="border border-dashed border-slate-300 rounded-lg py-8 px-4 text-center text-xs text-slate-500">
+              <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-lg py-8 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
                 No Telegram alerts dispatched in this session yet. Send a sample
                 alert above or start your Fyers live stream.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg max-h-[380px] overflow-y-auto">
+              <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-lg max-h-[380px] overflow-y-auto">
                 {telegram.recentDeliveries.map((log) => (
                   <div key={log.id} className="p-3.5 space-y-1.5 text-xs">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
                         {eventLabel(log.eventType)}
                       </span>
-                      <span className="font-mono tabular-nums text-[11px] text-slate-500">
+                      <span className="font-mono tabular-nums text-[11px] text-slate-500 dark:text-slate-400">
                         {log.timestamp}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-600">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-400">
                       {log.symbol} · Delivered {log.deliveredCount}/
                       {log.totalTargets}
                     </div>
@@ -1055,7 +1074,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
                           .map((r) => (
                             <div
                               key={r.chatId}
-                              className="text-[11px] text-red-600 font-mono"
+                              className="text-[11px] text-red-600 dark:text-red-400 font-mono"
                             >
                               {r.label}: {r.error}
                             </div>

@@ -174,14 +174,14 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
   );
 
   return (
-    <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-base font-semibold text-slate-900">
+          <h2 className="font-display text-base font-semibold text-slate-900 dark:text-slate-100">
             Parameter Optimizer &amp; Best Settings Finder
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Sweeps Stop Loss, Target, Max Trades/Day, RSI length/zones, and Entry
             Buffer across your real Fyers candles (preserving 4-candle bias,
             trailing base candle, 1:1 cost trail, and stop-after-target rules).
@@ -198,7 +198,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
               }))
             }
             aria-label="Optimization ranking objective"
-            className="px-3 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
           >
             {OBJECTIVE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -210,7 +210,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
           <button
             type="button"
             onClick={() => setShowGridEditor((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Search Grid ({totalCombos})</span>
@@ -225,7 +225,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
             type="button"
             onClick={handlePrimaryRun}
             disabled={running || isFetchingData || totalCombos === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
           >
             <Play className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
@@ -243,11 +243,11 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
       {/* Collapsible Search Grid Configuration */}
       {showGridEditor && (
-        <div className="px-5 py-4 bg-slate-50/70 border-b border-slate-200 space-y-4">
+        <div className="px-5 py-4 bg-slate-50/70 dark:bg-[#0E131D] border-b border-slate-200 dark:border-slate-800 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Stop Loss */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 Stop Loss Points
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -265,8 +265,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       {val}
@@ -278,7 +278,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
             {/* Target */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 Target Points
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -296,8 +296,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       {val}
@@ -309,7 +309,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
             {/* Max Trades / Day */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 Max Trades Per Day
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -330,8 +330,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       {val}
@@ -343,7 +343,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
             {/* RSI Length */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 RSI Length
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -361,8 +361,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       RSI({val})
@@ -374,7 +374,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
             {/* RSI Buy / Sell Zones */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 RSI Buy / Sell Zones
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -394,8 +394,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       {pair.label}
@@ -407,7 +407,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
             {/* Entry Buffer */}
             <div>
-              <div className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                 Entry Buffer Points
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -428,8 +428,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       }
                       className={`px-2.5 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
                         active
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1F293B]'
                       }`}
                     >
                       {val} pt
@@ -440,7 +440,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 text-[11px] text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
             <span>{activeObjective?.hint}</span>
             <span className="font-mono tabular-nums">
               {totalCombos} valid combinations (Target &gt; SL)
@@ -451,8 +451,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
       {/* Progress Bar while running */}
       {running && (
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/50 space-y-2">
-          <div className="flex items-center justify-between text-xs text-slate-700">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-[#0E131D] space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
             <span>
               Evaluating {progress.done} of {progress.total} strategy
               combinations...
@@ -464,7 +464,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
               %
             </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-600 transition-all duration-150"
               style={{
@@ -481,7 +481,7 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
       {/* Results Area */}
       {!report && !running && (
-        <div className="px-5 py-5 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
+        <div className="px-5 py-5 text-xs text-slate-600 dark:text-slate-400 flex flex-wrap items-center justify-between gap-3">
           <span>
             {candles && candles.length > 0
               ? `Ready to test ${totalCombos} combinations on ${periodLabel || 'loaded range'} (${candles.length.toLocaleString()} candles). Click Find Best Settings to rank optimal SL, Target, Max Trades/Day, and RSI settings.`
@@ -491,18 +491,18 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
       )}
 
       {report && !running && report.bestCandidate && (
-        <div className="divide-y divide-slate-200">
+        <div className="divide-y divide-slate-200 dark:divide-slate-800">
           {/* Best Recommendation vs Current Settings */}
           <div className="px-5 py-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold text-blue-700">
+                <div className="text-xs font-semibold text-blue-700 dark:text-blue-400">
                   Top Recommended Settings · Tested {report.testedCombinations}{' '}
                   combinations in {(report.durationMs / 1000).toFixed(2)}s
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Ranked by{' '}
-                  <strong className="text-slate-700">
+                  <strong className="text-slate-700 dark:text-slate-200">
                     {activeObjective?.label}
                   </strong>
                   {periodLabel ? ` on ${periodLabel}` : ''}. Top 15 results
@@ -514,11 +514,11 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => void handleCopySummary()}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-[#1F293B] rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                 >
                   {copiedSummary ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                       <span>Summary Copied</span>
                     </>
                   ) : (
@@ -550,12 +550,12 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
             {/* Side-by-side comparison grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Current Baseline */}
-              <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/50 space-y-3">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4 bg-slate-50/50 dark:bg-[#0E131D] space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-700">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Your Current Settings
                   </span>
-                  <span className="font-mono tabular-nums text-xs text-slate-500">
+                  <span className="font-mono tabular-nums text-xs text-slate-500 dark:text-slate-400">
                     1:
                     {(
                       report.currentBaseline.config.targetPoints /
@@ -566,41 +566,41 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <div className="text-[11px] text-slate-500">SL / Target</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">SL / Target</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.currentBaseline.config.stopLossPoints} /{' '}
                       {report.currentBaseline.config.targetPoints} pts
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Max Trades</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Max Trades</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.currentBaseline.config.maxTradesPerDay} / day
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">RSI Zone</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">RSI Zone</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       RSI({report.currentBaseline.config.rsiLength}) &lt;
                       {report.currentBaseline.config.rsiBuyThreshold}/&gt;
                       {report.currentBaseline.config.rsiSellThreshold}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Buffer</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Buffer</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.currentBaseline.config.entryBufferPoints} pts
                     </div>
                   </div>
                 </div>
-                <div className="pt-2.5 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="pt-2.5 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <div className="text-[11px] text-slate-500">Net P&amp;L</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Net P&amp;L</div>
                     <div
                       className={`font-mono tabular-nums font-bold mt-0.5 ${
                         report.currentBaseline.netPoints >= 0
-                          ? 'text-emerald-700'
-                          : 'text-red-600'
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
                       }`}
                     >
                       {report.currentBaseline.netPoints >= 0 ? '+' : ''}
@@ -608,20 +608,20 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Accuracy</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Accuracy</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.currentBaseline.accuracyExclBreakevenPct.toFixed(1)}%
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Profit Factor</div>
-                    <div className="font-mono tabular-nums font-semibold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Profit Factor</div>
+                    <div className="font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.currentBaseline.profitFactor.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Max DD</div>
-                    <div className="font-mono tabular-nums font-semibold text-red-600 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Max DD</div>
+                    <div className="font-mono tabular-nums font-semibold text-red-600 dark:text-red-400 mt-0.5">
                       -{report.currentBaseline.maxDrawdownPoints.toFixed(1)} pts
                     </div>
                   </div>
@@ -629,12 +629,12 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
               </div>
 
               {/* Best Found */}
-              <div className="border-2 border-blue-600/30 rounded-lg p-4 bg-blue-50/20 space-y-3">
+              <div className="border-2 border-blue-600/30 dark:border-blue-500/40 rounded-lg p-4 bg-blue-50/20 dark:bg-blue-500/10 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-blue-800">
+                  <span className="text-xs font-semibold text-blue-800 dark:text-blue-300">
                     Rank #1 Suggested Best Settings
                   </span>
-                  <span className="font-mono tabular-nums text-xs font-semibold text-emerald-700">
+                  <span className="font-mono tabular-nums text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                     {report.bestCandidate.netPoints -
                       report.currentBaseline.netPoints >=
                     0
@@ -649,47 +649,47 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <div className="text-[11px] text-slate-500">SL / Target</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">SL / Target</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.bestCandidate.config.stopLossPoints} /{' '}
                       {report.bestCandidate.config.targetPoints} pts
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Max Trades</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Max Trades</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.bestCandidate.config.maxTradesPerDay} / day
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">RSI Zone</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">RSI Zone</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       RSI({report.bestCandidate.config.rsiLength}) &lt;
                       {report.bestCandidate.config.rsiBuyThreshold}/&gt;
                       {report.bestCandidate.config.rsiSellThreshold}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Buffer</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Buffer</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.bestCandidate.config.entryBufferPoints} pts
                     </div>
                   </div>
                 </div>
-                <div className="pt-2.5 border-t border-blue-200/70 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="pt-2.5 border-t border-blue-200/70 dark:border-blue-500/30 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
-                    <div className="text-[11px] text-slate-500">Net P&amp;L</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Net P&amp;L</div>
                     <div
                       className={`font-mono tabular-nums font-bold mt-0.5 ${
                         report.bestCandidate.netPoints >= 0
-                          ? 'text-emerald-700'
-                          : 'text-red-600'
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-600 dark:text-red-400'
                       }`}
                     >
                       {report.bestCandidate.netPoints >= 0 ? '+' : ''}
                       {report.bestCandidate.netPoints.toFixed(1)} pts
                     </div>
-                    <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                    <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                       ₹
                       {Math.round(
                         report.bestCandidate.netRupees
@@ -697,30 +697,30 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Accuracy</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Accuracy</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.bestCandidate.accuracyExclBreakevenPct.toFixed(1)}%
                     </div>
-                    <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                    <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                       {report.bestCandidate.wins}W / {report.bestCandidate.losses}
                       L / {report.bestCandidate.breakevens}C
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Profit Factor</div>
-                    <div className="font-mono tabular-nums font-bold text-slate-900 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Profit Factor</div>
+                    <div className="font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 mt-0.5">
                       {report.bestCandidate.profitFactor.toFixed(2)}
                     </div>
-                    <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                    <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                       Calmar {report.bestCandidate.calmarRatio.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-500">Max DD</div>
-                    <div className="font-mono tabular-nums font-bold text-red-600 mt-0.5">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Max DD</div>
+                    <div className="font-mono tabular-nums font-bold text-red-600 dark:text-red-400 mt-0.5">
                       -{report.bestCandidate.maxDrawdownPoints.toFixed(1)} pts
                     </div>
-                    <div className="font-mono tabular-nums text-[10px] text-slate-500">
+                    <div className="font-mono tabular-nums text-[10px] text-slate-500 dark:text-slate-400">
                       Exp{' '}
                       {report.bestCandidate.expectancyPoints >= 0 ? '+' : ''}
                       {report.bestCandidate.expectancyPoints.toFixed(1)} pt/tr
@@ -728,17 +728,17 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                   </div>
                 </div>
                 {report.walkForwardMidDate && (
-                  <div className="pt-2 border-t border-blue-200/70 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
-                    <span className="text-slate-600 font-sans">
+                  <div className="pt-2 border-t border-blue-200/70 dark:border-blue-500/30 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
+                    <span className="text-slate-600 dark:text-slate-400 font-sans">
                       Walk-Forward Split (mid {report.walkForwardMidDate}):
                     </span>
-                    <span>
+                    <span className="text-slate-700 dark:text-slate-300">
                       H1{' '}
                       <strong
                         className={
                           report.bestCandidate.h1NetPoints >= 0
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }
                       >
                         {report.bestCandidate.h1NetPoints >= 0 ? '+' : ''}
@@ -748,8 +748,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       <strong
                         className={
                           report.bestCandidate.h2NetPoints >= 0
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }
                       >
                         {report.bestCandidate.h2NetPoints >= 0 ? '+' : ''}
@@ -758,8 +758,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       <span
                         className={`ml-1 font-sans font-semibold ${
                           report.bestCandidate.bothHalvesProfitable
-                            ? 'text-emerald-700'
-                            : 'text-amber-700'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-amber-700 dark:text-amber-400'
                         }`}
                       >
                         {report.bestCandidate.bothHalvesProfitable
@@ -774,8 +774,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
           </div>
 
           {/* Parameter Stability / Sensitivity Breakdown */}
-          <div className="px-5 py-4 bg-slate-50/40">
-            <div className="text-xs font-semibold text-slate-800 mb-3">
+          <div className="px-5 py-4 bg-slate-50/40 dark:bg-[#0E131D]/70">
+            <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mb-3">
               Parameter Robustness (Average Net Points Across All Tested
               Combinations)
             </div>
@@ -791,9 +791,9 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
               ].map((group) => (
                 <div
                   key={group.title}
-                  className="bg-white border border-slate-200 rounded-lg p-3 space-y-2"
+                  className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-lg p-3 space-y-2"
                 >
-                  <div className="text-[11px] font-semibold text-slate-600">
+                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
                     {group.title}
                   </div>
                   <div className="space-y-1.5">
@@ -805,8 +805,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                         <span
                           className={`font-mono ${
                             idx === 0
-                              ? 'font-semibold text-slate-900'
-                              : 'text-slate-600'
+                              ? 'font-semibold text-slate-900 dark:text-slate-100'
+                              : 'text-slate-600 dark:text-slate-400'
                           }`}
                         >
                           {item.label}
@@ -814,8 +814,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                         <span
                           className={`font-mono tabular-nums font-medium ${
                             item.avgNetPoints >= 0
-                              ? 'text-emerald-700'
-                              : 'text-red-600'
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
                           }`}
                         >
                           {item.avgNetPoints >= 0 ? '+' : ''}
@@ -831,18 +831,18 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
 
           {/* Top 15 Ranked Combinations Table */}
           <div>
-            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-800">
+            <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                 Top {report.topCandidates.length} Ranked Strategy Configurations
               </span>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Click Apply on any row to test it live &amp; update Neo Algo code
               </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#0E131D] text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                     <th className="py-2.5 px-4">#</th>
                     <th className="py-2.5 px-3">SL / Tgt</th>
                     <th className="py-2.5 px-3">Max/Day</th>
@@ -861,49 +861,49 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                     <th className="py-2.5 px-4 text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-mono tabular-nums">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono tabular-nums">
                   {report.topCandidates.map((cand) => (
                     <tr
                       key={cand.rank}
                       className={
                         cand.rank === 1
-                          ? 'bg-blue-50/30 hover:bg-blue-50/50'
-                          : 'hover:bg-slate-50/70'
+                          ? 'bg-blue-50/30 dark:bg-blue-500/10 hover:bg-blue-50/50 dark:hover:bg-blue-500/15'
+                          : 'hover:bg-slate-50/70 dark:hover:bg-[#161D2B]/60'
                       }
                     >
-                      <td className="py-2.5 px-4 font-semibold text-slate-700">
+                      <td className="py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-300">
                         {cand.rank}
                       </td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900 whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {cand.config.stopLossPoints} / {cand.config.targetPoints}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-700">
+                      <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300">
                         {cand.config.maxTradesPerDay}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
                         RSI({cand.config.rsiLength}) &lt;
                         {cand.config.rsiBuyThreshold}/&gt;
                         {cand.config.rsiSellThreshold}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-600">
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
                         {cand.config.entryBufferPoints}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-slate-700">
+                      <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
                         {cand.totalTrades}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-slate-600 whitespace-nowrap">
-                        <span className="text-emerald-700">{cand.wins}</span>/
-                        <span className="text-red-600">{cand.losses}</span>/
-                        <span className="text-amber-700">{cand.breakevens}</span>
+                      <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                        <span className="text-emerald-700 dark:text-emerald-400">{cand.wins}</span>/
+                        <span className="text-red-600 dark:text-red-400">{cand.losses}</span>/
+                        <span className="text-amber-700 dark:text-amber-400">{cand.breakevens}</span>
                       </td>
-                      <td className="py-2.5 px-3 text-right text-slate-900 font-medium">
+                      <td className="py-2.5 px-3 text-right text-slate-900 dark:text-slate-100 font-medium">
                         {cand.accuracyExclBreakevenPct.toFixed(1)}%
                       </td>
                       <td
                         className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${
                           cand.netPoints >= 0
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }`}
                       >
                         {cand.netPoints >= 0 ? '+' : ''}
@@ -912,8 +912,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                       <td
                         className={`py-2.5 px-3 text-right whitespace-nowrap ${
                           cand.netRupees >= 0
-                            ? 'text-emerald-700'
-                            : 'text-red-600'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
                         }`}
                       >
                         {cand.netRupees >= 0 ? '+' : '-'}₹
@@ -921,10 +921,10 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                           'en-IN'
                         )}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-slate-800">
+                      <td className="py-2.5 px-3 text-right text-slate-800 dark:text-slate-200">
                         {cand.profitFactor.toFixed(2)}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-red-600">
+                      <td className="py-2.5 px-3 text-right text-red-600 dark:text-red-400">
                         -{cand.maxDrawdownPoints.toFixed(1)}
                       </td>
                       {report.walkForwardMidDate && (
@@ -932,19 +932,19 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                           <span
                             className={
                               cand.h1NetPoints >= 0
-                                ? 'text-emerald-700'
-                                : 'text-red-600'
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
                             }
                           >
                             {cand.h1NetPoints >= 0 ? '+' : ''}
                             {cand.h1NetPoints.toFixed(0)}
                           </span>
-                          <span className="text-slate-400"> / </span>
+                          <span className="text-slate-400 dark:text-slate-600"> / </span>
                           <span
                             className={
                               cand.h2NetPoints >= 0
-                                ? 'text-emerald-700'
-                                : 'text-red-600'
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
                             }
                           >
                             {cand.h2NetPoints >= 0 ? '+' : ''}
@@ -960,8 +960,8 @@ export const StrategyOptimizerPanel: React.FC<StrategyOptimizerPanelProps> = ({
                           }
                           className={`px-2.5 py-1 text-[11px] font-semibold rounded border transition-colors cursor-pointer ${
                             appliedRank === cand.rank
-                              ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                              ? 'border-emerald-600 dark:border-emerald-500/60 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                              : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#161D2B] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1F293B]'
                           }`}
                         >
                           {appliedRank === cand.rank ? 'Applied' : 'Apply'}

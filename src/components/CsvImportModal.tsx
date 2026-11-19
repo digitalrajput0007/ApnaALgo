@@ -50,29 +50,30 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 backdrop-blur-xs p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="csv-modal-title"
     >
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl overflow-hidden shadow-xl">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div>
             <h2
               id="csv-modal-title"
-              className="font-display text-base font-semibold text-slate-900"
+              className="font-display text-base font-semibold text-slate-900 dark:text-slate-100"
             >
               Import 5-Minute OHLC Candles
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Paste Fyers historical CSV rows (time, open, high, low, close, volume)
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Paste Fyers historical CSV rows (time, open, high, low, close,
+              volume)
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close import dialog"
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -80,31 +81,31 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <label className="block">
-            <span className="text-xs font-medium text-slate-700">
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
               Session Label
             </span>
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="mt-1 w-full px-3 py-2 text-sm text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </label>
 
           <label className="block">
-            <span className="text-xs font-medium text-slate-700">
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
               CSV Data (5-min bars starting 09:15)
             </span>
             <textarea
               rows={9}
               value={rawCsv}
               onChange={(e) => setRawCsv(e.target.value)}
-              className="mt-1 w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="mt-1 w-full px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </label>
 
           {error && (
-            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div className="text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
@@ -113,7 +114,7 @@ export const CsvImportModal: React.FC<CsvImportModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+              className="px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
             >
               Cancel
             </button>

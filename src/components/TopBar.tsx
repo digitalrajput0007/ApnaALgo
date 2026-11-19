@@ -4,12 +4,15 @@ import {
   Link2,
   LogOut,
   Menu,
+  Moon,
+  OctagonX,
   Shield,
-  Square,
+  Sun,
   User,
 } from 'lucide-react';
 import { FyersQuoteTick } from '../hooks/useFyersLiveFeed';
 import { SaaSUser } from '../hooks/useSaaSAuth';
+import { getNseMarketStatus, NseMarketStatus } from '../utils/formatters';
 import { SettingsSection } from './SettingsView';
 import { UserAvatar } from './UserAvatar';
 
@@ -21,6 +24,8 @@ export type WorkspaceTab =
   | 'calendar'
   | 'integrations'
   | 'settings';
+
+export type TradingMode = 'PAPER' | 'LIVE';
 
 const TAB_LABELS: Record<WorkspaceTab, string> = {
   dashboard: 'Overview',
@@ -35,28 +40,46 @@ const TAB_LABELS: Record<WorkspaceTab, string> = {
 interface TopBarProps {
   activeTab: WorkspaceTab;
   user: SaaSUser;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
+  tradingMode: TradingMode;
+  onRequestModeSwitch: (next: TradingMode) => void;
+  onRequestStopAll: () => void;
   onSelectTab: (tab: WorkspaceTab) => void;
   onOpenSettingsSection: (section: SettingsSection) => void;
   onSignOut: () => void;
   onOpenMobileMenu: () => void;
   isLiveStreaming?: boolean;
   liveTick?: FyersQuoteTick | null;
-  onStopLiveStream?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
   activeTab,
   user,
+  theme,
+  onToggleTheme,
+  tradingMode,
+  onRequestModeSwitch,
+  onRequestStopAll,
   onSelectTab,
   onOpenSettingsSection,
   onSignOut,
   onOpenMobileMenu,
   isLiveStreaming = false,
   liveTick = null,
-  onStopLiveStream,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [marketStatus, setMarketStatus] = useState<NseMarketStatus>(() =>
+    getNseMarketStatus()
+  );
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setMarketStatus(getNseMarketStatus());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -76,16 +99,18 @@ export const TopBar: React.FC<TopBarProps> = ({
     };
   }, [menuOpen]);
 
+  const lastUpdateDisplay = liveTick?.istTimeSec || marketStatus.istTime;
+
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200/90">
-      <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-6">
-        {/* Left: Mobile Drawer Trigger + Quiet Breadcrumb */}
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#0E131D]/95 backdrop-blur-sm border-b border-slate-200/90 dark:border-slate-800/90">
+      <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+        {/* Left: Mobile Drawer Trigger + Quiet Breadcrumb + NSE Status */}
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={onOpenMobileMenu}
             aria-label="Open workspace navigation"
-            className="lg:hidden inline-flex items-center justify-center w-9 h-9 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors shrink-0 cursor-pointer"
+            className="lg:hidden inline-flex items-center justify-center w-9 h-9 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -97,43 +122,93 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab('dashboard')}
-              className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+              className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer shrink-0"
             >
               NeoAlgo
             </button>
-            <span className="text-slate-300 shrink-0" aria-hidden="true">
+            <span
+              className="text-slate-300 dark:text-slate-700 shrink-0"
+              aria-hidden="true"
+            >
               /
             </span>
-            <span className="font-display font-semibold text-slate-900 truncate">
+            <span className="font-display font-semibold text-slate-900 dark:text-slate-100 truncate">
               {TAB_LABELS[activeTab]}
             </span>
           </nav>
+
+          {/* Quiet NSE Market Status & Last Update Timestamp */}
+          <div className="hidden xl:flex items-center gap-2 pl-3 ml-1 border-l border-slate-200 dark:border-slate-800 text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
+            <span
+              className={
+                marketStatus.isOpen
+                  ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                  : 'text-slate-500 dark:text-slate-400 font-medium'
+              }
+            >
+              {marketStatus.label}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>{lastUpdateDisplay} IST</span>
+            {isLiveStreaming && liveTick && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="text-slate-900 dark:text-slate-100 font-semibold">
+                  NIFTY {liveTick.ltp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Right: Active Live Stream Pill (only while streaming) + Profile Menu */}
-        <div className="flex items-center gap-3 shrink-0">
-          {isLiveStreaming && (
-            <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono tabular-nums bg-emerald-50 border border-emerald-200/90 rounded-lg text-emerald-800 whitespace-nowrap shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-semibold">
-                LIVE{liveTick ? ` ${liveTick.ltp.toFixed(2)}` : ''}
-              </span>
-              {onStopLiveStream && (
-                <button
-                  type="button"
-                  onClick={onStopLiveStream}
-                  title="Stop Live Stream"
-                  className="inline-flex items-center gap-1 ml-1 pl-2 border-l border-emerald-300 text-red-600 hover:text-red-700 font-sans font-semibold cursor-pointer"
-                >
-                  <Square
-                    className="w-2.5 h-2.5 fill-current"
-                    aria-hidden="true"
-                  />
-                  <span>Stop</span>
-                </button>
-              )}
-            </div>
-          )}
+        {/* Right: Trust & Safety Controls (PAPER/LIVE, Stop All, Theme, Account) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Clear PAPER vs LIVE Mode Switcher */}
+          <button
+            type="button"
+            onClick={() =>
+              onRequestModeSwitch(tradingMode === 'PAPER' ? 'LIVE' : 'PAPER')
+            }
+            title="Switch between Paper Simulation and Live Trading mode"
+            className={`px-2.5 py-1.5 text-[11px] font-mono font-semibold tracking-wide rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              tradingMode === 'LIVE'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-slate-100 dark:bg-[#161D2B] border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-600'
+            }`}
+          >
+            {tradingMode === 'LIVE' ? 'LIVE MODE' : 'PAPER MODE'}
+          </button>
+
+          {/* Always-Visible Stop All / Square Off Emergency Button */}
+          <button
+            type="button"
+            onClick={onRequestStopAll}
+            title="Stop active feeds and square off open positions"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <OctagonX className="w-3.5 h-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Stop All / Square Off</span>
+            <span className="sm:hidden">Stop All</span>
+          </button>
+
+          {/* Dark / Light Theme Toggle */}
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={
+              theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+            }
+            title={
+              theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'
+            }
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4" aria-hidden="true" />
+            ) : (
+              <Moon className="w-4 h-4" aria-hidden="true" />
+            )}
+          </button>
 
           {/* Account Avatar Dropdown */}
           <div className="relative" ref={menuRef}>
@@ -142,14 +217,14 @@ export const TopBar: React.FC<TopBarProps> = ({
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
               aria-haspopup="menu"
-              className="inline-flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full hover:bg-slate-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20"
+              className="inline-flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
             >
               <UserAvatar
                 name={user.name}
                 avatarDataUrl={user.avatarDataUrl}
                 size="sm"
               />
-              <span className="hidden md:inline text-xs font-medium text-slate-800 max-w-[130px] truncate">
+              <span className="hidden md:inline text-xs font-medium text-slate-800 dark:text-slate-200 max-w-[120px] truncate">
                 {user.name}
               </span>
               <ChevronDown
@@ -161,13 +236,13 @@ export const TopBar: React.FC<TopBarProps> = ({
             {menuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 mt-2 w-60 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50"
+                className="absolute right-0 mt-2 w-60 bg-white dark:bg-[#161D2B] border border-slate-200 dark:border-slate-700/90 rounded-xl shadow-lg py-1.5 z-50"
               >
-                <div className="px-3.5 py-2.5 border-b border-slate-100">
-                  <div className="text-xs font-semibold text-slate-900 truncate">
+                <div className="px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                  <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
                     {user.name}
                   </div>
-                  <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                     {user.email}
                   </div>
                 </div>
@@ -180,7 +255,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setMenuOpen(false);
                       onOpenSettingsSection('profile');
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2.5 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
                   >
                     <User className="w-3.5 h-3.5 text-slate-400" />
                     <span>Profile &amp; picture</span>
@@ -192,7 +267,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setMenuOpen(false);
                       onOpenSettingsSection('security');
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2.5 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
                   >
                     <Shield className="w-3.5 h-3.5 text-slate-400" />
                     <span>Password &amp; recovery</span>
@@ -204,14 +279,14 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setMenuOpen(false);
                       onSelectTab('integrations');
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2.5 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
                   >
                     <Link2 className="w-3.5 h-3.5 text-slate-400" />
                     <span>Brokers &amp; Telegram</span>
                   </button>
                 </div>
 
-                <div className="pt-1 border-t border-slate-100">
+                <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
                     role="menuitem"
@@ -219,7 +294,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       setMenuOpen(false);
                       onSignOut();
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2.5 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center gap-2.5 cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Sign out</span>

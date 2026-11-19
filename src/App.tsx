@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
   KeyRound,
+  OctagonX,
   Pause,
   Play,
   RotateCcw,
@@ -26,11 +28,12 @@ import { NiftyChart } from './components/NiftyChart';
 import { PaperCalendarView } from './components/PaperCalendarView';
 import { SettingsSection, SettingsView } from './components/SettingsView';
 import { StrategyControls } from './components/StrategyControls';
-import { TopBar, WorkspaceTab } from './components/TopBar';
+import { TopBar, TradingMode, WorkspaceTab } from './components/TopBar';
 import { TradeLedger } from './components/TradeLedger';
 import { TradesPositionsJournalView } from './components/TradesPositionsJournalView';
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { YearlyBacktestView } from './components/YearlyBacktestView';
+import { formatINR } from './utils/formatters';
 import { generatePythonNeoAlgo } from './engine/codeGenerator';
 import {
   DEFAULT_STRATEGY_CONFIG,
@@ -75,17 +78,17 @@ class ChartErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
-          <div className="text-sm font-semibold text-slate-900">
+        <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center space-y-3">
+          <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Chart view reset after rapid date change
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Click reload chart below to re-render the current 5-minute session.
           </p>
           <button
             type="button"
             onClick={() => this.setState({ hasError: false })}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer"
+            className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg cursor-pointer"
           >
             Reload Chart
           </button>
@@ -124,6 +127,50 @@ export default function App() {
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('profile');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Dark-first theme with optional light toggle (persisted)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      return window.localStorage.getItem('neoalgo_theme') === 'light'
+        ? 'light'
+        : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    try {
+      window.localStorage.setItem('neoalgo_theme', theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Trust & Safety: PAPER vs LIVE mode + confirmation modals
+  const [tradingMode, setTradingMode] = useState<TradingMode>('PAPER');
+  const [showLiveConfirmModal, setShowLiveConfirmModal] = useState(false);
+  const [showStopAllModal, setShowStopAllModal] = useState(false);
+
+  const handleRequestModeSwitch = (next: TradingMode) => {
+    if (next === tradingMode) return;
+    if (next === 'PAPER') {
+      setTradingMode('PAPER');
+      toast.success('Switched to PAPER mode.');
+      return;
+    }
+    setShowLiveConfirmModal(true);
+  };
 
   const [presets, setPresets] = useState<ScenarioPreset[]>(() =>
     getScenarioPresets()
@@ -636,6 +683,24 @@ export default function App() {
     toast.success('Signed out.');
   };
 
+  const handleConfirmLiveMode = () => {
+    setTradingMode('LIVE');
+    setShowLiveConfirmModal(false);
+    toast.warning(
+      'LIVE mode enabled. Confirm every live action before execution.'
+    );
+  };
+
+  const handleConfirmStopAll = () => {
+    fyersFeed.stopStream();
+    setIsPlaying(false);
+    setTradingMode('PAPER');
+    setShowStopAllModal(false);
+    toast.error(
+      'Emergency Stop executed — live stream stopped, replay paused, and workspace switched to PAPER mode.'
+    );
+  };
+
   // Paper Trade Calendar save handlers
   const resolveSessionFallbackDate = () => {
     const firstDated = effectiveCandles.find(
@@ -793,9 +858,11 @@ export default function App() {
   // Initial session check splash
   if (auth.loading) {
     return (
-      <div className="min-h-screen bg-[#F7F8FA] flex flex-col items-center justify-center gap-3 px-6">
+      <div className="min-h-screen bg-[#F7F8FA] dark:bg-[#0B0F17] flex flex-col items-center justify-center gap-3 px-6">
         <BrandLogo size="md" />
-        <p className="text-xs text-slate-400">Loading workspace...</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Loading workspace...
+        </p>
       </div>
     );
   }
@@ -804,15 +871,23 @@ export default function App() {
   if (!auth.user) {
     return (
       <>
-        <Toaster position="bottom-right" richColors />
-        <AuthPortal auth={auth} />
+        <Toaster position="bottom-right" theme={theme} richColors />
+        <AuthPortal
+          auth={auth}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+        />
       </>
     );
   }
 
+  const openPositionsCount = orderJournal.positions.filter(
+    (p) => p.status === 'OPEN'
+  ).length;
+
   return (
-    <div className="min-h-screen bg-[#F7F8FA] text-slate-900 flex">
-      <Toaster position="bottom-right" richColors />
+    <div className="min-h-screen bg-[#F7F8FA] dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 flex">
+      <Toaster position="bottom-right" theme={theme} richColors />
 
       <WorkspaceSidebar
         activeTab={activeTab}
@@ -831,32 +906,36 @@ export default function App() {
         <TopBar
           activeTab={activeTab}
           user={auth.user}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          tradingMode={tradingMode}
+          onRequestModeSwitch={handleRequestModeSwitch}
+          onRequestStopAll={() => setShowStopAllModal(true)}
           onSelectTab={handleSelectTab}
           onOpenSettingsSection={handleOpenSettingsSection}
           onSignOut={() => void handleSignOut()}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           isLiveStreaming={fyersFeed.isStreaming}
           liveTick={fyersFeed.latestQuote}
-          onStopLiveStream={fyersFeed.stopStream}
         />
 
         <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           {/* One-time Recovery Key Banner shown right after registration or key-based reset */}
           {auth.pendingRecoveryKeyBanner && (
-            <section className="bg-white border border-blue-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+            <section className="bg-white dark:bg-[#111622] border border-blue-200 dark:border-blue-500/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xs">
               <div className="flex items-start gap-3 min-w-0">
                 <KeyRound
-                  className="w-4 h-4 text-blue-600 mt-0.5 shrink-0"
+                  className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0"
                   aria-hidden="true"
                 />
                 <div className="space-y-1 text-xs">
-                  <div className="font-semibold text-slate-900">
+                  <div className="font-semibold text-slate-900 dark:text-slate-100">
                     Save your account Recovery Key
                   </div>
-                  <p className="text-slate-600">
+                  <p className="text-slate-600 dark:text-slate-400">
                     Store this key somewhere safe — you can use it to recover
                     your password from the Sign In screen:{' '}
-                    <code className="font-mono font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded select-all">
+                    <code className="font-mono font-semibold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-[#161D2B] px-2 py-0.5 rounded select-all">
                       {auth.pendingRecoveryKeyBanner}
                     </code>
                   </p>
@@ -878,10 +957,10 @@ export default function App() {
                       toast.error('Copy failed.');
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                 >
                   {copiedRecoveryBanner ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   ) : (
                     <Copy className="w-3.5 h-3.5" />
                   )}
@@ -891,7 +970,7 @@ export default function App() {
                   type="button"
                   onClick={auth.dismissRecoveryKeyBanner}
                   aria-label="Dismiss recovery key notice"
-                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -902,6 +981,7 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <DashboardOverview
               user={auth.user}
+              theme={theme}
               config={config}
               labResult={result}
               labScenarioName={activeScenario.name}
@@ -925,24 +1005,24 @@ export default function App() {
               {/* Unified Strategy Lab & Replay Header */}
               <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+                  <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
                     Strategy Lab
                   </h1>
-                  <p className="text-sm text-slate-500 mt-1">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                     {activeScenario.subtitle}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   {/* Live Analysis vs Bar Replay Switch */}
-                  <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg">
+                  <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#161D2B] rounded-lg">
                     <button
                       type="button"
                       onClick={() => handleSwitchLabMode('analysis')}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                         labMode === 'analysis'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
                       Live &amp; Analysis
@@ -952,8 +1032,8 @@ export default function App() {
                       onClick={() => handleSwitchLabMode('replay')}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                         labMode === 'replay'
-                          ? 'bg-white text-slate-900 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                       }`}
                     >
                       Bar Replay
@@ -965,7 +1045,7 @@ export default function App() {
                     value={activeScenario.id}
                     onChange={(e) => handleSelectScenario(e.target.value)}
                     aria-label="Select trading session"
-                    className="px-3 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    className="px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                   >
                     {presets.map((preset) => (
                       <option key={preset.id} value={preset.id}>
@@ -977,7 +1057,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setIsImportOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Upload className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>Import CSV</span>
@@ -995,44 +1075,43 @@ export default function App() {
               {/* 4-Column Session KPI Strip */}
               <section
                 aria-label="Session Performance Summary"
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white border border-slate-200/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] divide-y sm:divide-y-0 sm:divide-x divide-slate-200/80 dark:divide-slate-800"
               >
                 <div className="px-5 py-4">
-                  <div className="text-xs text-slate-500">Session Net P&amp;L</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Session Net P&amp;L
+                  </div>
                   <div className="mt-1.5 flex items-baseline gap-2">
                     <span
                       className={`font-mono tabular-nums text-2xl font-semibold ${
                         result.metrics.netPoints > 0
-                          ? 'text-emerald-700'
+                          ? 'text-emerald-600 dark:text-emerald-400'
                           : result.metrics.netPoints < 0
-                          ? 'text-red-600'
-                          : 'text-slate-900'
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-slate-900 dark:text-slate-100'
                       }`}
                     >
                       {result.metrics.netPoints >= 0 ? '+' : ''}
                       {result.metrics.netPoints.toFixed(1)} pts
                     </span>
-                    <span className="font-mono tabular-nums text-xs text-slate-500">
-                      ({result.metrics.netRupees >= 0 ? '+₹' : '-₹'}
-                      {Math.abs(result.metrics.netRupees).toLocaleString(
-                        'en-IN',
-                        { maximumFractionDigits: 0 }
-                      )}
-                      )
+                    <span className="font-mono tabular-nums text-xs text-slate-500 dark:text-slate-400">
+                      ({formatINR(result.metrics.netRupees)})
                     </span>
                   </div>
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs text-slate-500">Session Bias</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Session Bias
+                  </div>
                   <div className="mt-1.5 flex items-baseline gap-2">
                     <span
                       className={`font-display text-lg font-semibold ${
                         result.finalBias === 'BULLISH'
-                          ? 'text-emerald-700'
+                          ? 'text-emerald-600 dark:text-emerald-400'
                           : result.finalBias === 'BEARISH'
-                          ? 'text-red-600'
-                          : 'text-slate-700'
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-slate-700 dark:text-slate-300'
                       }`}
                     >
                       {result.finalBias === 'PENDING'
@@ -1041,35 +1120,39 @@ export default function App() {
                         ? 'Bullish'
                         : 'Bearish'}
                     </span>
-                    <span className="text-xs text-slate-500 font-mono tabular-nums">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       {result.biasDecidedSet
-                        ? `Set #${result.biasDecidedSet} @ ${result.biasDecidedTime}`
+                        ? `Group #${result.biasDecidedSet} @ ${result.biasDecidedTime}`
                         : `${result.metrics.setsSkipped} skipped`}
                     </span>
                   </div>
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs text-slate-500">Trades &amp; PF</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Trades &amp; PF
+                  </div>
                   <div className="mt-1.5 flex items-baseline gap-2">
-                    <span className="font-mono tabular-nums text-2xl font-semibold text-slate-900">
+                    <span className="font-mono tabular-nums text-2xl font-semibold text-slate-900 dark:text-slate-100">
                       {result.metrics.wins}W / {result.metrics.losses}L
                       {result.metrics.breakevens > 0
                         ? ` / ${result.metrics.breakevens}BE`
                         : ''}
                     </span>
-                    <span className="text-xs text-slate-500 font-mono tabular-nums">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       PF {result.metrics.profitFactor.toFixed(2)}
                     </span>
                   </div>
                 </div>
 
                 <div className="px-5 py-4">
-                  <div className="text-xs text-slate-500">Engine State</div>
-                  <div className="mt-1.5 text-sm font-semibold text-slate-900 truncate">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Engine State
+                  </div>
+                  <div className="mt-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                     {stageLabel}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5 font-mono tabular-nums">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
                     Sets: {result.metrics.setsEvaluated} · Skipped:{' '}
                     {result.metrics.setsSkipped}
                   </div>
@@ -1078,12 +1161,12 @@ export default function App() {
 
               {/* Inline Replay Controls (only when Bar Replay mode is selected) */}
               {isReplayActive && (
-                <section className="bg-white border border-slate-200 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-4">
+                <section className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setIsPlaying((p) => !p)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
                     >
                       {isPlaying ? (
                         <>
@@ -1105,7 +1188,7 @@ export default function App() {
                         setFormationSubStep(4);
                         setReplayCount((c) => Math.max(1, c - 1));
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                     >
                       <ChevronLeft
                         className="w-3.5 h-3.5"
@@ -1123,7 +1206,7 @@ export default function App() {
                           Math.min(activeScenario.candles.length, c + 1)
                         );
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-lg cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                     >
                       <span>Next</span>
                       <ChevronRight
@@ -1139,13 +1222,13 @@ export default function App() {
                         setFormationSubStep(4);
                         setReplayCount(1);
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Reset</span>
                     </button>
 
-                    <label className="inline-flex items-center gap-1.5 ml-1 text-xs text-slate-600 cursor-pointer select-none">
+                    <label className="inline-flex items-center gap-1.5 ml-1 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={animateFormation}
@@ -1153,7 +1236,7 @@ export default function App() {
                           setAnimateFormation(e.target.checked);
                           setFormationSubStep(4);
                         }}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                        className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
                       />
                       <span>Animate candle</span>
                     </label>
@@ -1171,9 +1254,9 @@ export default function App() {
                         setReplayCount(Number(e.target.value));
                       }}
                       aria-label="Replay candle position"
-                      className="w-full accent-slate-900 cursor-pointer"
+                      className="w-full accent-blue-600 cursor-pointer"
                     />
-                    <span className="font-mono tabular-nums text-xs font-medium text-slate-700 whitespace-nowrap">
+                    <span className="font-mono tabular-nums text-xs font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                       {replayCount}/{activeScenario.candles.length} (
                       {lastCandle?.time ?? '--'})
                     </span>
@@ -1199,6 +1282,7 @@ export default function App() {
                         effectiveCandles[0]?.date ?? 'nodate'
                       }`}
                       symbolLabel={activeScenario.name}
+                      appTheme={theme}
                       isLiveStreaming={
                         fyersFeed.isStreaming &&
                         selectedScenarioId === 'fyers_live'
@@ -1213,7 +1297,11 @@ export default function App() {
                     />
                   </ChartErrorBoundary>
 
-                  <EquityCurveChart result={result} config={config} />
+                  <EquityCurveChart
+                    result={result}
+                    config={config}
+                    theme={theme}
+                  />
 
                   <TradeLedger
                     result={result}
@@ -1247,6 +1335,7 @@ export default function App() {
 
           {activeTab === 'backtest1y' && (
             <YearlyBacktestView
+              theme={theme}
               config={config}
               onChangeConfig={setConfig}
               onResetDefaults={() => setConfig(DEFAULT_STRATEGY_CONFIG)}
@@ -1340,6 +1429,136 @@ export default function App() {
         onClose={() => setIsImportOpen(false)}
         onImport={handleImportCandles}
       />
+
+      {/* Trust & Safety Modal: Confirm Switching to LIVE Mode */}
+      {showLiveConfirmModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="live-mode-dialog-title"
+        >
+          <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+              <AlertTriangle
+                className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0"
+                aria-hidden="true"
+              />
+              <h2
+                id="live-mode-dialog-title"
+                className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100"
+              >
+                Switch to LIVE Trading Mode?
+              </h2>
+            </div>
+
+            <div className="px-6 py-4 space-y-3 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <p>
+                You are switching the workspace indicator from{' '}
+                <strong className="text-slate-900 dark:text-slate-100">
+                  PAPER
+                </strong>{' '}
+                to{' '}
+                <strong className="text-red-600 dark:text-red-400">LIVE</strong>
+                . Make sure your broker feed, stop loss ({config.stopLossPoints}{' '}
+                pts), target ({config.targetPoints} pts), and max daily trade cap
+                ({config.maxTradesPerDay}/day) are verified.
+              </p>
+              <div className="px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 font-mono tabular-nums text-[11px] text-slate-700 dark:text-slate-300">
+                Broker:{' '}
+                {fyersFeed.status?.authenticated
+                  ? 'Fyers Connected'
+                  : 'Not Connected'}{' '}
+                · Lot Size: {config.lots} × {config.lotSize} qty
+              </div>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 dark:bg-[#0E131D] border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLiveConfirmModal(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+              >
+                Stay in Paper Mode
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLiveMode}
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer"
+              >
+                Confirm LIVE Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trust & Safety Modal: Emergency Stop All / Square Off */}
+      {showStopAllModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="stop-all-dialog-title"
+        >
+          <div className="bg-white dark:bg-[#111622] border border-red-200 dark:border-red-500/35 rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
+              <OctagonX
+                className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0"
+                aria-hidden="true"
+              />
+              <h2
+                id="stop-all-dialog-title"
+                className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100"
+              >
+                Confirm Emergency Stop All / Square Off
+              </h2>
+            </div>
+
+            <div className="px-6 py-4 space-y-3 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <p>
+                This will immediately halt all active workspace automation:
+              </p>
+              <ul className="space-y-1.5 font-mono tabular-nums text-[11px] bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg p-3 text-slate-700 dark:text-slate-300">
+                <li>
+                  • Fyers Live Feed:{' '}
+                  <strong>
+                    {fyersFeed.isStreaming ? 'STREAMING → STOP' : 'Idle'}
+                  </strong>
+                </li>
+                <li>
+                  • Active Mode:{' '}
+                  <strong>{tradingMode} → PAPER</strong>
+                </li>
+                <li>
+                  • Open Journal Positions: <strong>{openPositionsCount}</strong>
+                </li>
+                <li>
+                  • Bar Replay: <strong>{isPlaying ? 'RUNNING → PAUSE' : 'Paused'}</strong>
+                </li>
+              </ul>
+            </div>
+
+            <div className="px-6 py-3.5 bg-slate-50 dark:bg-[#0E131D] border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowStopAllModal(false)}
+                className="px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStopAll}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer"
+              >
+                <OctagonX className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Stop All Now</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
