@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
-  Link2,
+  Code2,
   LogOut,
   Menu,
   Moon,
@@ -277,12 +277,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                     role="menuitem"
                     onClick={() => {
                       setMenuOpen(false);
-                      onSelectTab('integrations');
+                      onOpenSettingsSection('developer');
                     }}
                     className="w-full px-3.5 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
                   >
-                    <Link2 className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Brokers &amp; Telegram</span>
+                    <Code2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Developer &amp; Python code</span>
                   </button>
                 </div>
 

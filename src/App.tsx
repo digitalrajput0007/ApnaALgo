@@ -498,7 +498,24 @@ export default function App() {
     toast.success('Exported neo_nifty_4candle_rsi2.py');
   };
 
-  const handleImportCandles = (candles: Candle[], name: string) => {
+  const normalizeSessionCandles = (raw: Candle[]): Candle[] => {
+    const byKey = new Map<string, Candle>();
+    for (const c of raw) {
+      const key = `${c.date || ''}_${c.time}`;
+      byKey.set(key, c);
+    }
+    return Array.from(byKey.values())
+      .sort((a, b) => {
+        const da = a.date || '';
+        const db = b.date || '';
+        if (da !== db) return da.localeCompare(db);
+        return a.time.localeCompare(b.time);
+      })
+      .map((c, idx) => ({ ...c, index: idx }));
+  };
+
+  const handleImportCandles = (rawCandles: Candle[], name: string) => {
+    const candles = normalizeSessionCandles(rawCandles);
     const customId = `custom_${Date.now()}`;
     const customPreset: ScenarioPreset = {
       id: customId,
@@ -518,10 +535,11 @@ export default function App() {
   };
 
   const handleLoadFyersCandles = (
-    candles: Candle[],
+    rawCandles: Candle[],
     label: string,
     subtitle: string
   ) => {
+    const candles = normalizeSessionCandles(rawCandles);
     const liveId = 'fyers_live';
     const nextPreset: ScenarioPreset = {
       id: liveId,
@@ -546,10 +564,11 @@ export default function App() {
   };
 
   const handleHistorySync = (
-    candles: Candle[],
+    rawCandles: Candle[],
     symbol: string,
     date: string
   ) => {
+    const candles = normalizeSessionCandles(rawCandles);
     const liveId = 'fyers_live';
     setPresets((prev) => {
       const idx = prev.findIndex((p) => p.id === liveId);
@@ -609,7 +628,14 @@ export default function App() {
     setPresets((prev) => {
       const idx = prev.findIndex((p) => p.id === liveId);
       const existing = idx !== -1 ? prev[idx] : null;
-      const prevCandles = existing ? [...existing.candles] : [];
+      let prevCandles = existing ? [...existing.candles] : [];
+      const lastExisting = prevCandles[prevCandles.length - 1];
+
+      // Never append today's live ticks onto a previous day's historical session
+      if (lastExisting && lastExisting.date && lastExisting.date !== istDate) {
+        prevCandles = [];
+      }
+
       const last = prevCandles[prevCandles.length - 1];
 
       if (last && last.time === bucketTime) {
@@ -623,7 +649,7 @@ export default function App() {
       } else if (!last || bucketTime > last.time) {
         prevCandles.push({
           index: prevCandles.length,
-          date: last?.date || istDate,
+          date: istDate,
           time: bucketTime,
           open: tick.ltp,
           high: tick.ltp,
@@ -892,8 +918,6 @@ export default function App() {
       <WorkspaceSidebar
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
-        user={auth.user}
-        onSignOut={() => void handleSignOut()}
         fyersFeed={fyersFeed}
         paperTradeCount={paperJournal.entries.length}
         journalPositionCount={orderJournal.positions.length}

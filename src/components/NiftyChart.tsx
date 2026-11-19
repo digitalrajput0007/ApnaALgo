@@ -51,14 +51,24 @@ interface NiftyChartProps {
   appTheme?: 'dark' | 'light';
 }
 
+interface NormalizedChartBar {
+  ts: UTCTimestamp;
+  candle: EnrichedCandle;
+}
+
 /**
- * Convert candle date + HH:MM (IST wall-clock) into a unique UTC timestamp so
- * TradingView Lightweight Charts renders exact IST session times (09:15..15:25)
- * regardless of the user's browser timezone.
+ * Convert candle date + HH:MM (IST wall-clock) into a strict, deduplicated,
+ * chronologically sorted list of UTC timestamps so TradingView Lightweight Charts
+ * renders exact IST session times (09:15..15:25) and can never double-plot
+ * overlapping or duplicate candles.
  */
-function buildChartTimestamps(candles: EnrichedCandle[]): UTCTimestamp[] {
-  const result: UTCTimestamp[] = [];
-  let prevTs = 0;
+function buildNormalizedChartData(candles: EnrichedCandle[]): {
+  bars: NormalizedChartBar[];
+  indexToTs: UTCTimestamp[];
+  tsToBarIndex: Map<number, number>;
+} {
+  const indexToTs: UTCTimestamp[] = [];
+  const byTs = new Map<number, EnrichedCandle>();
 
   for (let i = 0; i < candles.length; i++) {
     const c = candles[i];
@@ -76,15 +86,21 @@ function buildChartTimestamps(candles: EnrichedCandle[]): UTCTimestamp[] {
       day = d;
     }
 
-    let ts = Math.floor(Date.UTC(year, month - 1, day, hh, mm, 0) / 1000);
-    if (prevTs > 0 && ts <= prevTs) {
-      ts = prevTs + 300;
-    }
-    prevTs = ts;
-    result.push(ts as UTCTimestamp);
+    const ts = Math.floor(Date.UTC(year, month - 1, day, hh, mm, 0) / 1000);
+    indexToTs.push(ts as UTCTimestamp);
+    byTs.set(ts, c);
   }
 
-  return result;
+  const bars: NormalizedChartBar[] = Array.from(byTs.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([ts, candle]) => ({ ts: ts as UTCTimestamp, candle }));
+
+  const tsToBarIndex = new Map<number, number>();
+  for (let i = 0; i < bars.length; i++) {
+    tsToBarIndex.set(Number(bars[i].ts), i);
+  }
+
+  return { bars, indexToTs, tsToBarIndex };
 }
 
 function getRemainingFiveMinCountdown(): string {
@@ -152,7 +168,11 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
 
   const candles = result.candles;
 
-  const timestamps = useMemo(() => buildChartTimestamps(candles), [candles]);
+  const {
+    bars: chartBars,
+    indexToTs: timestamps,
+    tsToBarIndex,
+  } = useMemo(() => buildNormalizedChartData(candles), [candles]);
 
   const focusedTrade: TradeRecord | null = useMemo(() => {
     if (selectedTradeId !== null) {
@@ -181,28 +201,35 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
     return () => window.clearInterval(id);
   }, [isLiveStreaming]);
 
-  // Initialize TradingView Lightweight Chart once
+  // Initialize TradingView Lightweight Chart once (strictly single DOM instance)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    // Ensure no leftover chart canvas exists in the mount container
+    el.innerHTML = '';
+    const initDark = chartTheme === 'dark';
 
     const chart = createChart(el, {
       width: el.clientWidth || 920,
       height: 520,
       layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#475569',
+        background: {
+          type: ColorType.Solid,
+          color: initDark ? '#111622' : '#ffffff',
+        },
+        textColor: initDark ? '#94a3b8' : '#475569',
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: 11,
         panes: {
-          separatorColor: '#e2e8f0',
-          separatorHoverColor: '#94a3b8',
+          separatorColor: initDark ? '#1f2937' : '#e2e8f0',
+          separatorHoverColor: initDark ? '#475569' : '#94a3b8',
           enableResize: true,
         },
       },
       grid: {
-        vertLines: { color: '#f1f5f9' },
-        horzLines: { color: '#f1f5f9' },
+        vertLines: { color: initDark ? '#192130' : '#f1f5f9' },
+        horzLines: { color: initDark ? '#192130' : '#f1f5f9' },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -340,7 +367,17 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
 
     return () => {
       resizeObserver.disconnect();
-      chart.remove();
+      try {
+        markersPlugin.detach();
+      } catch {
+        // ignore if already detached
+      }
+      try {
+        chart.remove();
+      } catch {
+        // ignore if already removed
+      }
+      el.innerHTML = '';
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
@@ -348,6 +385,10 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
       markersPluginRef.current = null;
       priceLinesRef.current = [];
       rsiLinesRef.current = [];
+      prevScenarioKeyRef.current = '';
+      prevLenRef.current = 0;
+      prevFirstTsRef.current = 0;
+      prevLastTsRef.current = 0;
     };
   }, []);
 
@@ -393,10 +434,25 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
     });
   }, [chartTheme, magnetMode]);
 
-  // Toggle Volume visibility
+  // Toggle Volume visibility and clear/restore volume histogram data cleanly
   useEffect(() => {
-    volumeSeriesRef.current?.applyOptions({ visible: showVolume });
-  }, [showVolume]);
+    const volumeSeries = volumeSeriesRef.current;
+    if (!volumeSeries) return;
+    volumeSeries.applyOptions({ visible: showVolume });
+    if (!showVolume) {
+      volumeSeries.setData([]);
+    } else {
+      const volData: HistogramData<Time>[] = chartBars.map(({ ts, candle }) => ({
+        time: ts,
+        value: candle.volume || 0,
+        color:
+          candle.close >= candle.open
+            ? 'rgba(5, 150, 105, 0.25)'
+            : 'rgba(220, 38, 38, 0.25)',
+      }));
+      volumeSeries.setData(volData);
+    }
+  }, [showVolume, chartBars]);
 
   // Sync Candle, Volume, and RSI(2) series data (preserving zoom/pan on live ticks!)
   useEffect(() => {
@@ -407,65 +463,72 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
     if (!candleSeries || !volumeSeries || !rsiSeries || !chart) return;
 
     const map = new Map<number, EnrichedCandle>();
-    for (let i = 0; i < candles.length; i++) {
-      map.set(timestamps[i], candles[i]);
+    for (let i = 0; i < chartBars.length; i++) {
+      map.set(Number(chartBars[i].ts), chartBars[i].candle);
     }
     tsToCandleRef.current = map;
 
     const isSameScenario = prevScenarioKeyRef.current === scenarioKey;
     const prevLen = prevLenRef.current;
-    const firstTs = timestamps.length > 0 ? Number(timestamps[0]) : 0;
+    const firstTs = chartBars.length > 0 ? Number(chartBars[0].ts) : 0;
     const lastTs =
-      timestamps.length > 0 ? Number(timestamps[timestamps.length - 1]) : 0;
+      chartBars.length > 0 ? Number(chartBars[chartBars.length - 1].ts) : 0;
     const prevBarTs =
-      timestamps.length > 1 ? Number(timestamps[timestamps.length - 2]) : 0;
+      chartBars.length > 1 ? Number(chartBars[chartBars.length - 2].ts) : 0;
 
     const isMonotonicSameSession =
       prevFirstTsRef.current > 0 &&
       prevLastTsRef.current > 0 &&
       firstTs === prevFirstTsRef.current &&
       lastTs >= prevLastTsRef.current &&
-      (candles.length === prevLen || prevBarTs >= prevLastTsRef.current);
+      (chartBars.length === prevLen || prevBarTs >= prevLastTsRef.current);
 
     const isIncrementalTickUpdate =
       isSameScenario &&
       prevLen > 0 &&
-      candles.length >= prevLen &&
-      candles.length <= prevLen + 1 &&
+      chartBars.length >= prevLen &&
+      chartBars.length <= prevLen + 1 &&
       isMonotonicSameSession;
 
-    const toBar = (i: number): CandlestickData<Time> => ({
-      time: timestamps[i],
-      open: candles[i].open,
-      high: candles[i].high,
-      low: candles[i].low,
-      close: candles[i].close,
-    });
+    const toBar = (i: number): CandlestickData<Time> => {
+      const { ts, candle } = chartBars[i];
+      return {
+        time: ts,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      };
+    };
 
-    const toVol = (i: number): HistogramData<Time> => ({
-      time: timestamps[i],
-      value: candles[i].volume || 0,
-      color:
-        candles[i].close >= candles[i].open
-          ? 'rgba(5, 150, 105, 0.25)'
-          : 'rgba(220, 38, 38, 0.25)',
-    });
+    const toVol = (i: number): HistogramData<Time> => {
+      const { ts, candle } = chartBars[i];
+      return {
+        time: ts,
+        value: candle.volume || 0,
+        color:
+          candle.close >= candle.open
+            ? 'rgba(5, 150, 105, 0.25)'
+            : 'rgba(220, 38, 38, 0.25)',
+      };
+    };
 
     const applyFullSeriesData = (forceFit: boolean) => {
-      const candleData: CandlestickData<Time>[] = candles.map((_, i) =>
+      const candleData: CandlestickData<Time>[] = chartBars.map((_, i) =>
         toBar(i)
       );
-      const volData: HistogramData<Time>[] = candles.map((_, i) => toVol(i));
       const rsiData: LineData<Time>[] = [];
-      for (let i = 0; i < candles.length; i++) {
-        const val = candles[i].rsi2;
+      for (let i = 0; i < chartBars.length; i++) {
+        const val = chartBars[i].candle.rsi2;
         if (val !== null) {
-          rsiData.push({ time: timestamps[i], value: val });
+          rsiData.push({ time: chartBars[i].ts, value: val });
         }
       }
 
       candleSeries.setData(candleData);
-      volumeSeries.setData(volData);
+      volumeSeries.setData(
+        showVolume ? chartBars.map((_, i) => toVol(i)) : []
+      );
       rsiSeries.setData(rsiData);
 
       if (
@@ -473,30 +536,37 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
         !isSameScenario ||
         prevLen === 0 ||
         firstTs !== prevFirstTsRef.current ||
-        Math.abs(candles.length - prevLen) > 2
+        Math.abs(chartBars.length - prevLen) > 2
       ) {
         chart.timeScale().fitContent();
       }
     };
 
-    if (isIncrementalTickUpdate && candles.length > 0) {
+    if (isIncrementalTickUpdate && chartBars.length > 0) {
       // Smooth 60fps TradingView live candle formation without resetting zoom/pan,
       // with safe fallback to full setData() if timestamps ever diverge.
       try {
-        const lastIdx = candles.length - 1;
-        if (candles.length === prevLen + 1 && lastIdx - 1 >= 0) {
+        const lastIdx = chartBars.length - 1;
+        if (chartBars.length === prevLen + 1 && lastIdx - 1 >= 0) {
           candleSeries.update(toBar(lastIdx - 1));
-          volumeSeries.update(toVol(lastIdx - 1));
-          const prevRsi = candles[lastIdx - 1].rsi2;
+          if (showVolume) {
+            volumeSeries.update(toVol(lastIdx - 1));
+          }
+          const prevRsi = chartBars[lastIdx - 1].candle.rsi2;
           if (prevRsi !== null) {
-            rsiSeries.update({ time: timestamps[lastIdx - 1], value: prevRsi });
+            rsiSeries.update({
+              time: chartBars[lastIdx - 1].ts,
+              value: prevRsi,
+            });
           }
         }
         candleSeries.update(toBar(lastIdx));
-        volumeSeries.update(toVol(lastIdx));
-        const lastRsi = candles[lastIdx].rsi2;
+        if (showVolume) {
+          volumeSeries.update(toVol(lastIdx));
+        }
+        const lastRsi = chartBars[lastIdx].candle.rsi2;
         if (lastRsi !== null) {
-          rsiSeries.update({ time: timestamps[lastIdx], value: lastRsi });
+          rsiSeries.update({ time: chartBars[lastIdx].ts, value: lastRsi });
         }
       } catch {
         applyFullSeriesData(true);
@@ -506,10 +576,10 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
     }
 
     prevScenarioKeyRef.current = scenarioKey;
-    prevLenRef.current = candles.length;
+    prevLenRef.current = chartBars.length;
     prevFirstTsRef.current = firstTs;
     prevLastTsRef.current = lastTs;
-  }, [candles, timestamps, scenarioKey]);
+  }, [chartBars, scenarioKey, showVolume]);
 
   // Update RSI(2) horizontal threshold lines (<12 Buy, >89 Sell, 50 midline)
   useEffect(() => {
@@ -742,10 +812,16 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
   const handleJumpToSet = (startIndex: number, endIndex: number) => {
     const chart = chartRef.current;
     if (!chart) return;
+    const startTs = timestamps[startIndex];
+    const endTs = timestamps[endIndex];
+    const mappedStart =
+      startTs !== undefined ? tsToBarIndex.get(Number(startTs)) ?? startIndex : startIndex;
+    const mappedEnd =
+      endTs !== undefined ? tsToBarIndex.get(Number(endTs)) ?? endIndex : endIndex;
     const pad = 6;
     chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(-2, startIndex - pad),
-      to: endIndex + pad,
+      from: Math.max(-2, mappedStart - pad),
+      to: mappedEnd + pad,
     });
   };
 
@@ -1017,7 +1093,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
 
         <div
           ref={containerRef}
-          className="w-full"
+          className="w-full overflow-hidden relative"
           style={{ height: 520 }}
           aria-label="TradingView NIFTY 5-minute Candlestick and RSI Chart"
         />

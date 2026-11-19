@@ -337,16 +337,22 @@ async function fetchFyersHistory(
   }
 
   const rawCandles = data.candles || [];
-  const filtered: FyersCandleBar[] = [];
+  const dedupByBucket = new Map<string, FyersCandleBar>();
 
   for (const row of rawCandles) {
     const [epoch, open, high, low, close, volume] = row;
     const istDate = formatIstDateYYYYMMDD(epoch);
     const istTime = formatIstHHMM(epoch);
     const mins = toMinutes(istTime);
-    if (mins >= 9 * 60 + 15 && mins <= 15 * 60 + 25) {
-      filtered.push({
-        index: filtered.length,
+    if (
+      istDate >= rangeFrom &&
+      istDate <= rangeTo &&
+      mins >= 9 * 60 + 15 &&
+      mins <= 15 * 60 + 25
+    ) {
+      const bucketKey = `${istDate}_${istTime}`;
+      dedupByBucket.set(bucketKey, {
+        index: 0,
         date: istDate,
         time: istTime,
         open,
@@ -359,7 +365,9 @@ async function fetchFyersHistory(
     }
   }
 
-  return filtered;
+  return Array.from(dedupByBucket.values())
+    .sort((a, b) => a.epoch - b.epoch)
+    .map((bar, idx) => ({ ...bar, index: idx }));
 }
 
 async function fetchFyersHistoryRange(
