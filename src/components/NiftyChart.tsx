@@ -538,6 +538,7 @@ export const NiftyChart: React.FC<NiftyChartProps> = ({
         firstTs !== prevFirstTsRef.current ||
         Math.abs(chartBars.length - prevLen) > 2
       ) {
+        chart.priceScale('right').applyOptions({ autoScale: true });
         chart.timeScale().fitContent();
       }
     };

@@ -13,6 +13,7 @@ import {
   BrokerProfile,
   BrokerPublicStatus,
 } from './server/brokers/types';
+import { candleStore } from './server/candleStore';
 import { PublicSaaSUser, saasStore, toPublicUser } from './server/saasStore';
 import {
   DEFAULT_TELEGRAM_TRIGGERS,
@@ -28,6 +29,7 @@ import {
   toPublicTelegramConfig,
   verifyTelegramBotToken,
 } from './server/telegramService';
+import { normalizeFyersSymbol } from './src/utils/fyersSymbols';
 
 dns.setDefaultResultOrder('ipv4first');
 dotenv.config();
@@ -302,6 +304,18 @@ function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return -1;
   return h * 60 + m;
+}
+
+function isNseMarketClosedTodayIst(): boolean {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const todayStr = formatIstDateYYYYMMDD(nowSec);
+  const [y, m, d] = todayStr.split('-').map(Number);
+  if (y && m && d) {
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    if (dow === 0 || dow === 6) return true;
+  }
+  const nowMins = toMinutes(formatIstHHMM(nowSec));
+  return nowMins >= 15 * 60 + 35;
 }
 
 async function fetchFyersHistory(
@@ -1482,21 +1496,51 @@ async function startServer() {
 
   app.get('/api/fyers/history', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    const creds = getFyersCredentials();
-    const entry = getUserFyersEntry(req);
-    if (!creds || !entry) {
-      res.status(401).json({ error: 'Connect your Fyers account first.' });
+    const authUser = getAuthenticatedUserFromReq(req);
+    if (!authUser) {
+      res.status(401).json({ error: 'Sign in to NeoAlgo first.' });
       return;
     }
 
-    const symbol =
-      typeof req.query.symbol === 'string' && req.query.symbol.trim()
-        ? req.query.symbol.trim()
-        : 'NSE:NIFTY50-INDEX';
+    const rawSymbol =
+      typeof req.query.symbol === 'string' ? req.query.symbol : '';
+    const symbol = normalizeFyersSymbol(rawSymbol);
+    const todayIst = getCurrentIstDateString();
     const dateStr =
-      typeof req.query.date === 'string' && req.query.date.trim()
+      typeof req.query.date === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(req.query.date.trim())
         ? req.query.date.trim()
-        : getCurrentIstDateString();
+        : todayIst;
+    const forceRefresh =
+      req.query.refresh === '1' || req.query.refresh === 'true';
+
+    // Serve completed historical days directly from persistent disk DB without calling Fyers
+    if (!forceRefresh) {
+      const cached = candleStore.getCachedDay(
+        symbol,
+        dateStr,
+        todayIst,
+        isNseMarketClosedTodayIst()
+      );
+      if (cached.hit) {
+        res.json({
+          symbol,
+          date: dateStr,
+          candles: cached.candles,
+          source: 'database',
+        });
+        return;
+      }
+    }
+
+    const creds = getFyersCredentials();
+    const entry = getUserFyersEntry(req);
+    if (!creds || !entry) {
+      res.status(401).json({
+        error: `No cached data for ${symbol} on ${dateStr}. Connect your Fyers account to fetch it.`,
+      });
+      return;
+    }
 
     try {
       const candles = await runWithFyersAutoRefresh(
@@ -1505,7 +1549,12 @@ async function startServer() {
         creds,
         (token) => fetchFyersHistory(creds.appId, token, symbol, dateStr)
       );
-      res.json({ symbol, date: dateStr, candles });
+      candleStore.upsertCandles(symbol, candles, {
+        fromDate: dateStr,
+        toDate: dateStr,
+        todayIst,
+      });
+      res.json({ symbol, date: dateStr, candles, source: 'fyers' });
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Failed to fetch Fyers history';
@@ -1522,30 +1571,31 @@ async function startServer() {
 
   app.get('/api/fyers/history-range', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    const creds = getFyersCredentials();
-    const entry = getUserFyersEntry(req);
-    if (!creds || !entry) {
-      res.status(401).json({ error: 'Connect your Fyers account first.' });
+    const authUser = getAuthenticatedUserFromReq(req);
+    if (!authUser) {
+      res.status(401).json({ error: 'Sign in to NeoAlgo first.' });
       return;
     }
 
-    const symbol =
-      typeof req.query.symbol === 'string' && req.query.symbol.trim()
-        ? req.query.symbol.trim()
-        : 'NSE:NIFTY50-INDEX';
+    const rawSymbol =
+      typeof req.query.symbol === 'string' ? req.query.symbol : '';
+    const symbol = normalizeFyersSymbol(rawSymbol);
+    const todayIst = getCurrentIstDateString();
     const rawDays = Number(req.query.days) || 365;
     const days = Math.max(1, Math.min(366, rawDays));
     const toDate =
       typeof req.query.toDate === 'string' &&
       /^\d{4}-\d{2}-\d{2}$/.test(req.query.toDate)
         ? req.query.toDate
-        : getCurrentIstDateString();
+        : todayIst;
     const explicitFrom =
       typeof req.query.fromDate === 'string' &&
       /^\d{4}-\d{2}-\d{2}$/.test(req.query.fromDate)
         ? req.query.fromDate
         : null;
     const fromDate = explicitFrom || addDaysYYYYMMDD(toDate, -days);
+    const forceRefresh =
+      req.query.refresh === '1' || req.query.refresh === 'true';
 
     if (fromDate > toDate) {
       res
@@ -1565,14 +1615,71 @@ async function startServer() {
       return;
     }
 
+    const marketClosedToday = isNseMarketClosedTodayIst();
+    const existingBefore = candleStore.getRangeCandles(
+      symbol,
+      fromDate,
+      toDate
+    );
+    const missingRanges = forceRefresh
+      ? [{ fromDate, toDate }]
+      : candleStore.getMissingRanges(
+          symbol,
+          fromDate,
+          toDate,
+          todayIst,
+          marketClosedToday
+        );
+
+    // Everything requested is already stored in persistent local DB!
+    if (missingRanges.length === 0) {
+      const uniqueDays = new Set(existingBefore.map((c) => c.date)).size;
+      res.json({
+        symbol,
+        fromDate,
+        toDate,
+        tradingDays: uniqueDays,
+        totalCandles: existingBefore.length,
+        candles: existingBefore,
+        source: 'database',
+        fetchedRanges: 0,
+      });
+      return;
+    }
+
+    const creds = getFyersCredentials();
+    const entry = getUserFyersEntry(req);
+    if (!creds || !entry) {
+      res.status(401).json({
+        error:
+          'Connect your Fyers account to download the missing historical dates.',
+      });
+      return;
+    }
+
     try {
-      const candles = await runWithFyersAutoRefresh(
-        entry.user.id,
-        entry.connection,
-        creds,
-        (token) =>
-          fetchFyersHistoryRange(creds.appId, token, symbol, fromDate, toDate)
-      );
+      for (const gap of missingRanges) {
+        const gapCandles = await runWithFyersAutoRefresh(
+          entry.user.id,
+          entry.connection,
+          creds,
+          (token) =>
+            fetchFyersHistoryRange(
+              creds.appId,
+              token,
+              symbol,
+              gap.fromDate,
+              gap.toDate
+            )
+        );
+        candleStore.upsertCandles(symbol, gapCandles, {
+          fromDate: gap.fromDate,
+          toDate: gap.toDate,
+          todayIst,
+        });
+      }
+
+      const candles = candleStore.getRangeCandles(symbol, fromDate, toDate);
       const uniqueDays = new Set(candles.map((c) => c.date)).size;
       res.json({
         symbol,
@@ -1581,6 +1688,9 @@ async function startServer() {
         tradingDays: uniqueDays,
         totalCandles: candles.length,
         candles,
+        source:
+          !forceRefresh && existingBefore.length > 0 ? 'hybrid' : 'fyers',
+        fetchedRanges: missingRanges.length,
       });
     } catch (err) {
       const msg =
@@ -1607,10 +1717,9 @@ async function startServer() {
       return;
     }
 
-    const symbol =
-      typeof req.query.symbol === 'string' && req.query.symbol.trim()
-        ? req.query.symbol.trim()
-        : 'NSE:NIFTY50-INDEX';
+    const rawSymbol =
+      typeof req.query.symbol === 'string' ? req.query.symbol : '';
+    const symbol = normalizeFyersSymbol(rawSymbol);
 
     try {
       const quote = await runWithFyersAutoRefresh(
@@ -1707,6 +1816,9 @@ async function startServer() {
                 subscribedDate
               )
           );
+          if (candles.length > 0) {
+            candleStore.upsertCandles(subscribedSymbol, candles);
+          }
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(
               JSON.stringify({
@@ -1749,7 +1861,7 @@ async function startServer() {
           date?: string;
         };
         if (msg.action === 'subscribe') {
-          subscribedSymbol = msg.symbol?.trim() || 'NSE:NIFTY50-INDEX';
+          subscribedSymbol = normalizeFyersSymbol(msg.symbol);
           subscribedDate = msg.date?.trim() || getCurrentIstDateString();
           lastSyncedBucket = '';
           stopPolling();

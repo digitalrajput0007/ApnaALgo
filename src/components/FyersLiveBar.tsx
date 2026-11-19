@@ -1,7 +1,11 @@
 import React from 'react';
-import { Radio, RefreshCw, Square, Wifi } from 'lucide-react';
+import { Database, Radio, RefreshCw, Square, Wifi } from 'lucide-react';
 import { FyersLiveFeedController } from '../hooks/useFyersLiveFeed';
 import { formatPct } from '../utils/formatters';
+import {
+  FYERS_INDEX_PRESETS,
+  normalizeFyersSymbol,
+} from '../utils/fyersSymbols';
 
 export type { FyersQuoteTick, FyersStatus } from '../hooks/useFyersLiveFeed';
 
@@ -10,12 +14,6 @@ interface FyersLiveBarProps {
   isLiveModeActive: boolean;
   onOpenIntegrations?: () => void;
 }
-
-const SYMBOL_OPTIONS = [
-  'NSE:NIFTY50-INDEX',
-  'NSE:NIFTYBANK-INDEX',
-  'NSE:FINNIFTY-INDEX',
-];
 
 export const FyersLiveBar: React.FC<FyersLiveBarProps> = ({
   feed,
@@ -34,11 +32,17 @@ export const FyersLiveBar: React.FC<FyersLiveBarProps> = ({
     fetchingHistory,
     isStreaming,
     latestQuote,
+    lastDataSource,
     errorMsg,
     handleConnect,
     handleFetchHistory,
     toggleStream,
   } = feed;
+
+  const trimmedCustom = customSymbol.trim();
+  const normalizedCustomPreview = trimmedCustom
+    ? normalizeFyersSymbol(trimmedCustom)
+    : '';
 
   if (loadingStatus) {
     return (
@@ -81,6 +85,16 @@ export const FyersLiveBar: React.FC<FyersLiveBarProps> = ({
               <span className="font-mono text-slate-600 dark:text-slate-400">
                 {status.profile?.fy_id || status.profile?.name || 'Connected'}
               </span>
+            </span>
+          )}
+
+          {lastDataSource === 'database' && !isStreaming && (
+            <span
+              title="Historical candles served from local server database without calling Fyers API"
+              className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-md"
+            >
+              <Database className="w-3 h-3" aria-hidden="true" />
+              <span>Local DB</span>
             </span>
           )}
 
@@ -146,29 +160,48 @@ export const FyersLiveBar: React.FC<FyersLiveBarProps> = ({
               <select
                 value={symbol}
                 onChange={(e) => {
-                  setSymbol(e.target.value);
+                  const next = e.target.value;
+                  setSymbol(next);
                   setCustomSymbol('');
+                  if (!isStreaming) {
+                    void handleFetchHistory(next);
+                  }
                 }}
                 disabled={isStreaming}
                 aria-label="Symbol"
                 className="px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 disabled:opacity-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               >
-                {SYMBOL_OPTIONS.map((sym) => (
-                  <option key={sym} value={sym}>
-                    {sym}
+                {FYERS_INDEX_PRESETS.map((opt) => (
+                  <option key={opt.symbol} value={opt.symbol}>
+                    {opt.label}
                   </option>
                 ))}
               </select>
 
-              <input
-                type="text"
-                value={customSymbol}
-                onChange={(e) => setCustomSymbol(e.target.value)}
-                disabled={isStreaming}
-                placeholder="Custom symbol"
-                aria-label="Custom Fyers symbol"
-                className="w-36 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 disabled:opacity-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-              />
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={customSymbol}
+                  onChange={(e) => setCustomSymbol(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !isStreaming && !fetchingHistory) {
+                      e.preventDefault();
+                      void handleFetchHistory(
+                        customSymbol.trim() || symbol
+                      );
+                    }
+                  }}
+                  disabled={isStreaming}
+                  placeholder="e.g. SBIN, RELIANCE"
+                  title={
+                    normalizedCustomPreview
+                      ? `Resolves to ${normalizedCustomPreview} — press Enter to load`
+                      : 'Enter any NSE/BSE symbol (e.g. SBIN, NSE:SBIN, RELIANCE, TCS)'
+                  }
+                  aria-label="Custom Fyers symbol"
+                  className="w-40 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 disabled:opacity-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
 
               <input
                 type="date"
@@ -221,6 +254,20 @@ export const FyersLiveBar: React.FC<FyersLiveBarProps> = ({
           )}
         </div>
       </div>
+
+      {trimmedCustom &&
+        normalizedCustomPreview &&
+        normalizedCustomPreview !== trimmedCustom.toUpperCase() && (
+          <div className="px-4 py-1.5 bg-slate-50 dark:bg-[#0E131E] border-t border-slate-200/80 dark:border-slate-800/80 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between gap-2">
+            <span>
+              Symbol mapped automatically to{' '}
+              <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                {normalizedCustomPreview}
+              </span>{' '}
+              (press Enter or click Fetch 5m)
+            </span>
+          </div>
+        )}
 
       {errorMsg && (
         <div className="px-4 py-2.5 bg-red-50 dark:bg-red-500/10 border-t border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-400">

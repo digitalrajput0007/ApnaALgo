@@ -1303,9 +1303,9 @@ export default function App() {
               <section className="grid grid-cols-1 xl:grid-cols-[1fr_308px] gap-6 items-start">
                 <div className="space-y-6 min-w-0">
                   <ChartErrorBoundary
-                    resetKey={`${activeScenario.id}:${labMode}:${
+                    resetKey={`${activeScenario.id}:${activeScenario.name}:${labMode}:${
                       effectiveCandles[0]?.date ?? 'nodate'
-                    }`}
+                    }:${effectiveCandles[0]?.open ?? 0}`}
                   >
                     <NiftyChart
                       result={result}
@@ -1313,9 +1313,9 @@ export default function App() {
                       config={config}
                       selectedTradeId={selectedTradeId}
                       onSelectTrade={setSelectedTradeId}
-                      scenarioKey={`${activeScenario.id}:${labMode}:${
+                      scenarioKey={`${activeScenario.id}:${activeScenario.name}:${labMode}:${
                         effectiveCandles[0]?.date ?? 'nodate'
-                      }`}
+                      }:${effectiveCandles[0]?.open ?? 0}`}
                       symbolLabel={activeScenario.name}
                       appTheme={theme}
                       isLiveStreaming={

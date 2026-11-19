@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Candle } from '../types/strategy';
+import { normalizeFyersSymbol } from '../utils/fyersSymbols';
 
 export interface FyersStatus {
   configured: boolean;
@@ -51,10 +52,15 @@ export interface FyersLiveFeedController {
   fetchingHistory: boolean;
   isStreaming: boolean;
   latestQuote: FyersQuoteTick | null;
+  lastDataSource: 'database' | 'fyers' | null;
   errorMsg: string | null;
   handleConnect: () => Promise<void>;
   handleDisconnect: () => Promise<void>;
-  handleFetchHistory: () => Promise<void>;
+  handleFetchHistory: (
+    overrideSymbol?: string,
+    overrideDate?: string,
+    forceRefresh?: boolean
+  ) => Promise<void>;
   toggleStream: () => void;
   stopStream: () => void;
   refreshStatus: () => Promise<void>;
@@ -78,6 +84,9 @@ export function useFyersLiveFeed({
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [latestQuote, setLatestQuote] = useState<FyersQuoteTick | null>(null);
+  const [lastDataSource, setLastDataSource] = useState<
+    'database' | 'fyers' | null
+  >(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -96,7 +105,7 @@ export function useFyersLiveFeed({
     onHistorySyncRef.current = onHistorySync;
   }, [onLoadCandles, onLiveTick, onHistorySync]);
 
-  const activeSymbol = customSymbol.trim() || symbol;
+  const activeSymbol = normalizeFyersSymbol(customSymbol.trim() || symbol);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -215,57 +224,83 @@ export function useFyersLiveFeed({
     await refreshStatus();
   }, [refreshStatus, stopStream]);
 
-  const handleFetchHistory = useCallback(async () => {
-    const seq = ++fetchSeqRef.current;
-    setErrorMsg(null);
-    setFetchingHistory(true);
-    try {
-      const targetDate = tradeDate || status?.istToday || '';
-      const params = new URLSearchParams({
-        symbol: activeSymbol,
-        date: targetDate,
-      });
-      const resp = await fetch(`/api/fyers/history?${params.toString()}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      const data = (await resp.json()) as {
-        symbol?: string;
-        date?: string;
-        candles?: Candle[];
-        error?: string;
-      };
-      // Ignore stale responses if the user rapidly switched dates and clicked Fetch again
-      if (seq !== fetchSeqRef.current) return;
-
-      if (!resp.ok || !data.candles) {
-        if (resp.status === 401) {
-          void refreshStatus();
-        }
-        throw new Error(data.error || 'Failed to fetch Fyers 5m candles');
-      }
-      if (data.candles.length === 0) {
-        setErrorMsg(
-          `No regular-session 5m candles returned for ${activeSymbol} on ${
-            data.date || targetDate
-          } (market holiday, weekend, or pre-open).`
+  const handleFetchHistory = useCallback(
+    async (
+      overrideSymbol?: string,
+      overrideDate?: string,
+      forceRefresh = false
+    ) => {
+      const seq = ++fetchSeqRef.current;
+      setErrorMsg(null);
+      setFetchingHistory(true);
+      try {
+        const targetSymbol = normalizeFyersSymbol(
+          overrideSymbol !== undefined ? overrideSymbol : activeSymbol
         );
-        return;
+        const targetDate =
+          overrideDate !== undefined
+            ? overrideDate
+            : tradeDate || status?.istToday || '';
+        const params = new URLSearchParams({
+          symbol: targetSymbol,
+          date: targetDate,
+        });
+        if (forceRefresh) {
+          params.set('refresh', '1');
+        }
+        const resp = await fetch(`/api/fyers/history?${params.toString()}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = (await resp.json()) as {
+          symbol?: string;
+          date?: string;
+          candles?: Candle[];
+          source?: 'database' | 'fyers';
+          error?: string;
+        };
+        // Ignore stale responses if the user rapidly switched dates/symbols
+        if (seq !== fetchSeqRef.current) return;
+
+        if (!resp.ok || !data.candles) {
+          if (resp.status === 401) {
+            void refreshStatus();
+          }
+          throw new Error(data.error || 'Failed to fetch Fyers 5m candles');
+        }
+        const resolvedSymbol = data.symbol || targetSymbol;
+        const resolvedDate = data.date || targetDate;
+        const sourceTag = data.source === 'database' ? 'database' : 'fyers';
+        setLastDataSource(sourceTag);
+
+        if (data.candles.length === 0) {
+          setErrorMsg(
+            `No regular-session 5m candles returned for ${resolvedSymbol} on ${resolvedDate} (market holiday, weekend, or pre-open).`
+          );
+          return;
+        }
+        const sourceLabel =
+          sourceTag === 'database'
+            ? 'loaded from local DB'
+            : 'fetched from Fyers & saved to DB';
+        onLoadCandlesRef.current(
+          data.candles,
+          `Fyers Live: ${resolvedSymbol}`,
+          `${data.candles.length} real 5-min bars ${sourceLabel} (${resolvedDate})`
+        );
+      } catch (err) {
+        if (seq !== fetchSeqRef.current) return;
+        setErrorMsg(
+          err instanceof Error ? err.message : 'History fetch failed'
+        );
+      } finally {
+        if (seq === fetchSeqRef.current) {
+          setFetchingHistory(false);
+        }
       }
-      onLoadCandlesRef.current(
-        data.candles,
-        `Fyers Live: ${activeSymbol}`,
-        `${data.candles.length} real 5-min bars fetched from Fyers (${data.date})`
-      );
-    } catch (err) {
-      if (seq !== fetchSeqRef.current) return;
-      setErrorMsg(err instanceof Error ? err.message : 'History fetch failed');
-    } finally {
-      if (seq === fetchSeqRef.current) {
-        setFetchingHistory(false);
-      }
-    }
-  }, [activeSymbol, refreshStatus, status?.istToday, tradeDate]);
+    },
+    [activeSymbol, refreshStatus, status?.istToday, tradeDate]
+  );
 
   const startHttpQuoteFallback = useCallback(
     (targetSymbol: string, targetDate: string) => {
@@ -463,6 +498,7 @@ export function useFyersLiveFeed({
     fetchingHistory,
     isStreaming,
     latestQuote,
+    lastDataSource,
     errorMsg,
     handleConnect,
     handleDisconnect,

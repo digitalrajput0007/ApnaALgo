@@ -4,6 +4,7 @@ import {
   Bookmark,
   Calendar,
   CalendarPlus,
+  Database,
   Download,
   Play,
   Trash2,
@@ -34,6 +35,10 @@ import {
 } from '../types/strategy';
 import { StrategyControls } from './StrategyControls';
 import { StrategyOptimizerPanel } from './StrategyOptimizerPanel';
+import {
+  FYERS_INDEX_PRESETS,
+  normalizeFyersSymbol,
+} from '../utils/fyersSymbols';
 
 interface YearlyBacktestViewProps {
   config: StrategyConfig;
@@ -67,11 +72,7 @@ interface YearlyBacktestViewProps {
 
 type DayFilter = 'all' | 'win' | 'loss' | 'notrade';
 
-const SYMBOL_OPTIONS = [
-  'NSE:NIFTY50-INDEX',
-  'NSE:NIFTYBANK-INDEX',
-  'NSE:FINNIFTY-INDEX',
-];
+const SYMBOL_OPTIONS = FYERS_INDEX_PRESETS.map((o) => o.symbol);
 
 const SAVED_REPORTS_KEY = 'neoalgo_saved_backtest_reports_v1';
 
@@ -180,9 +181,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     fromDate: string;
     toDate: string;
     candles: Candle[];
+    source?: 'database' | 'hybrid' | 'fyers';
   } | null>(null);
 
-  const activeSymbol = customSymbol.trim() || symbol;
+  const activeSymbol = normalizeFyersSymbol(customSymbol.trim() || symbol);
 
   const applyQuickPreset = (daysCount: number) => {
     setActivePresetDays(daysCount);
@@ -217,6 +219,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         fromDate?: string;
         toDate?: string;
         candles?: Candle[];
+        source?: 'database' | 'hybrid' | 'fyers';
         error?: string;
       };
       if (!resp.ok || !data.candles) {
@@ -236,6 +239,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         fromDate: data.fromDate || fromDate,
         toDate: data.toDate || toDate,
         candles: data.candles,
+        source: data.source,
       });
       setReportName(
         `${data.symbol || activeSymbol} (${data.fromDate || fromDate} to ${
@@ -560,9 +564,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               aria-label="Backtest Fyers Symbol"
               className="px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
-              {SYMBOL_OPTIONS.map((sym) => (
-                <option key={sym} value={sym}>
-                  {sym}
+              {FYERS_INDEX_PRESETS.map((opt) => (
+                <option key={opt.symbol} value={opt.symbol}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -571,7 +575,13 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
               type="text"
               value={customSymbol}
               onChange={(e) => setCustomSymbol(e.target.value)}
-              placeholder="Or custom symbol"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !loading) {
+                  e.preventDefault();
+                  void handleRunBacktest(false);
+                }
+              }}
+              placeholder="e.g. SBIN, RELIANCE"
               aria-label="Custom Fyers backtest symbol"
               className="w-40 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
@@ -648,7 +658,27 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
 
         {/* Save / Export Report Bar when results exist */}
         {backtest && fetchedRange && (
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+            {fetchedRange.source && (
+              <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+                <Database
+                  className="w-3.5 h-3.5 text-emerald-500 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>
+                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                    {fetchedRange.symbol}
+                  </span>{' '}
+                  ·{' '}
+                  {fetchedRange.source === 'database'
+                    ? 'Served instantly from local historical DB (0 Fyers API calls)'
+                    : fetchedRange.source === 'hybrid'
+                    ? 'Loaded from local DB + synced missing dates from Fyers'
+                    : 'Fetched from Fyers and saved permanently to local DB'}
+                </span>
+              </div>
+            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
               <input
                 type="text"
@@ -698,6 +728,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 <span>Export JSON</span>
               </button>
             </div>
+          </div>
           </div>
         )}
       </section>
