@@ -1,0 +1,6 @@
+{
+  "name": "NeoAlgo — NIFTY 5m Fyers Strategy Studio",
+  "description": "Algorithmic strategy backtester, replay workbench, and Fyers API v3 Neo Algo implementation guide for the NIFTY 5-minute 4-Candle Bias and RSI(2) breakout system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
