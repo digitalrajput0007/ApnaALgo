@@ -8,6 +8,7 @@ import {
   Link2,
   Square,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { FyersLiveFeedController } from '../hooks/useFyersLiveFeed';
@@ -57,6 +58,11 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
             journalPositionCount > 0 ? String(journalPositionCount) : undefined,
         },
         {
+          id: 'wallet',
+          label: 'Paper Wallet & Risk',
+          icon: Wallet,
+        },
+        {
           id: 'calendar',
           label: 'Paper Calendar',
           icon: CalendarDays,
@@ -81,6 +87,11 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
           icon: ClipboardList,
           meta:
             journalPositionCount > 0 ? String(journalPositionCount) : undefined,
+        },
+        {
+          id: 'wallet',
+          label: 'Paper Wallet & Risk',
+          icon: Wallet,
         },
         {
           id: 'integrations',

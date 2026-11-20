@@ -49,17 +49,21 @@ export interface PaperWalletConfig {
   riskMode: PaperRiskMode;
   riskPerTradeRupees: number;
   riskPerTradePct: number;
+  dailyRiskMode?: PaperRiskMode;
   maxDailyLossRupees: number;
+  maxDailyLossPct?: number;
   maxLotsCap: number;
   autoSizeLots: boolean;
 }
 
 export const DEFAULT_PAPER_WALLET_CONFIG: PaperWalletConfig = {
-  startingCapital: 200000,
+  startingCapital: 100000,
   riskMode: 'FIXED_INR',
   riskPerTradeRupees: 2000,
-  riskPerTradePct: 1.5,
-  maxDailyLossRupees: 6000,
+  riskPerTradePct: 2,
+  dailyRiskMode: 'FIXED_INR',
+  maxDailyLossRupees: 5000,
+  maxDailyLossPct: 5,
   maxLotsCap: 25,
   autoSizeLots: true,
 };

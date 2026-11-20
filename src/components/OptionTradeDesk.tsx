@@ -700,7 +700,7 @@ export const OptionTradeDesk: React.FC<OptionTradeDeskProps> = ({
           </div>
         </div>
 
-        {/* Risk-Managed Auto Lot Sizing Strip */}
+        {/* Risk-Managed Live Option-Price Lot Sizing Strip */}
         {lotCalculation && (
           <div className="px-3.5 py-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-500/10 border border-blue-200/80 dark:border-blue-500/25 flex flex-wrap items-center justify-between gap-2.5 text-xs">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 min-w-0">
@@ -709,9 +709,9 @@ export const OptionTradeDesk: React.FC<OptionTradeDeskProps> = ({
                 aria-hidden="true"
               />
               <span className="font-mono tabular-nums">
-                Risk Budget{' '}
+                Risk{' '}
                 <strong>
-                  {formatINR(lotCalculation.allowedRiskRupees, {
+                  {formatINR(lotCalculation.effectiveRiskBudgetRupees, {
                     signed: false,
                     decimals: 0,
                   })}
@@ -723,31 +723,55 @@ export const OptionTradeDesk: React.FC<OptionTradeDeskProps> = ({
                     decimals: 0,
                   })}
                   /lot
-                </strong>{' '}
-                ={' '}
-                <strong className="text-blue-700 dark:text-blue-300">
-                  {lotCalculation.recommendedLots} lot
-                  {lotCalculation.recommendedLots === 1 ? '' : 's'} (
-                  {lotCalculation.recommendedLots * config.lotSize} qty)
                 </strong>
+                {lotCalculation.capitalPerLotRupees !== null && (
+                  <>
+                    {' '}
+                    · 1L Cost{' '}
+                    <strong>
+                      {formatINR(lotCalculation.capitalPerLotRupees, {
+                        signed: false,
+                        decimals: 0,
+                      })}
+                    </strong>
+                  </>
+                )}{' '}
+                ={' '}
+                <strong
+                  className={
+                    lotCalculation.executableLots === 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-blue-700 dark:text-blue-300'
+                  }
+                >
+                  {lotCalculation.executableLots} lot
+                  {lotCalculation.executableLots === 1 ? '' : 's'} (
+                  {lotCalculation.executableLots * config.lotSize} qty)
+                </strong>
+                {lotCalculation.cappedByCapital && (
+                  <span className="ml-1.5 text-[10px] font-sans text-amber-700 dark:text-amber-300">
+                    (Wallet-capped @ live LTP)
+                  </span>
+                )}
               </span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              {config.lots !== lotCalculation.recommendedLots && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onChangeConfig({
-                      ...config,
-                      lots: lotCalculation.recommendedLots,
-                    })
-                  }
-                  className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
-                >
-                  Use {lotCalculation.recommendedLots} Lots
-                </button>
-              )}
+              {lotCalculation.executableLots >= 1 &&
+                config.lots !== lotCalculation.executableLots && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChangeConfig({
+                        ...config,
+                        lots: lotCalculation.executableLots,
+                      })
+                    }
+                    className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
+                  >
+                    Use {lotCalculation.executableLots} Lots
+                  </button>
+                )}
               {onOpenPaperWallet && (
                 <button
                   type="button"
@@ -755,7 +779,7 @@ export const OptionTradeDesk: React.FC<OptionTradeDeskProps> = ({
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 hover:underline cursor-pointer"
                 >
                   <Wallet className="w-3 h-3" />
-                  <span>Risk Settings</span>
+                  <span>Wallet &amp; Risk</span>
                 </button>
               )}
             </div>

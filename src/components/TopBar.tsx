@@ -11,7 +11,6 @@ import {
   Shield,
   Sun,
   User,
-  Wallet,
   Wifi,
 } from 'lucide-react';
 import { FyersQuoteTick } from '../hooks/useFyersLiveFeed';
@@ -30,6 +29,7 @@ export type WorkspaceTab =
   | 'backtest1y'
   | 'journal'
   | 'calendar'
+  | 'wallet'
   | 'integrations'
   | 'users'
   | 'settings';
@@ -42,6 +42,7 @@ const TAB_LABELS: Record<WorkspaceTab, string> = {
   backtest1y: 'Backtest',
   journal: 'Trades & Positions',
   calendar: 'Paper Calendar',
+  wallet: 'Paper Wallet & Risk',
   integrations: 'Integrations',
   users: 'User Management',
   settings: 'Settings',
@@ -67,9 +68,6 @@ interface TopBarProps {
   telegramArmed: boolean;
   telegramDestinationsCount: number;
   paperWalletBalance: number;
-  liveOpenMtm: number;
-  openPositionsCount: number;
-  onOpenPaperWallet: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -92,9 +90,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   telegramArmed,
   telegramDestinationsCount,
   paperWalletBalance,
-  liveOpenMtm,
-  openPositionsCount,
-  onOpenPaperWallet,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [marketStatus, setMarketStatus] = useState<NseMarketStatus>(() =>
@@ -341,48 +336,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               <span className="sm:hidden">{tradingMode}</span>
             </button>
 
-            {/* Live Paper Trading Wallet Balance (Directly next to PAPER MODE) */}
-            <button
-              type="button"
-              onClick={onOpenPaperWallet}
-              title="Open Paper Trading Wallet & Risk Management"
-              className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 min-h-[34px] text-[11px] font-mono tabular-nums rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                openPositionsCount > 0 && liveOpenMtm > 0
-                  ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/35 text-slate-900 dark:text-slate-100'
-                  : openPositionsCount > 0 && liveOpenMtm < 0
-                  ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/35 text-slate-900 dark:text-slate-100'
-                  : 'bg-white dark:bg-[#161D2B] border-slate-200 dark:border-slate-700/90 text-slate-900 dark:text-slate-100 hover:border-blue-400 dark:hover:border-blue-500/60'
-              }`}
+            {/* Live Paper Wallet Balance (Non-clickable display only) */}
+            <div
+              aria-label="Live paper wallet balance"
+              className="inline-flex items-center px-2.5 py-1.5 min-h-[34px] text-xs font-mono font-semibold tabular-nums rounded-lg border border-slate-200 dark:border-slate-700/90 bg-slate-50 dark:bg-[#161D2B] text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0 select-none"
             >
-              <Wallet
-                className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0"
-                aria-hidden="true"
-              />
-              <span className="font-semibold">
-                {formatINR(paperWalletBalance, { signed: false, decimals: 0 })}
-              </span>
-              {(openPositionsCount > 0 || liveOpenMtm !== 0) && (
-                <span
-                  className={`hidden sm:inline-flex items-center gap-1 font-semibold pl-1 border-l border-slate-200 dark:border-slate-700 ${
-                    liveOpenMtm > 0
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : liveOpenMtm < 0
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
-                >
-                  {openPositionsCount > 0 && (
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                        liveOpenMtm >= 0 ? 'bg-emerald-500' : 'bg-red-500'
-                      }`}
-                      aria-hidden="true"
-                    />
-                  )}
-                  {formatINR(liveOpenMtm, { signed: true, decimals: 0 })}
-                </span>
-              )}
-            </button>
+              {formatINR(paperWalletBalance, { signed: false, decimals: 0 })}
+            </div>
 
             <button
               type="button"

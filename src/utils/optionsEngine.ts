@@ -367,14 +367,23 @@ export interface RiskBasedLotCalculation {
   optionSlPoints: number;
   riskPerLotRupees: number;
   allowedRiskRupees: number;
+  allowedDailyRiskRupees: number;
+  remainingDailyRiskRupees: number;
+  effectiveRiskBudgetRupees: number;
   rawLotsByRisk: number;
+  optionLtpUsed: number | null;
+  isOptionLtpLive: boolean;
   capitalPerLotRupees: number | null;
   affordableLots: number | null;
   recommendedLots: number;
+  executableLots: number;
   totalRiskAtRecommendedLots: number;
   totalCapitalRequired: number | null;
   cappedByCapital: boolean;
   cappedByMaxLots: boolean;
+  cappedByDailyRisk: boolean;
+  insufficientCapital: boolean;
+  dailyLimitReached: boolean;
 }
 
 export function calculateRiskBasedLots(params: {
@@ -383,21 +392,42 @@ export function calculateRiskBasedLots(params: {
   riskMode: 'FIXED_INR' | 'PERCENT_CAPITAL';
   riskPerTradeRupees: number;
   riskPerTradePct: number;
+  dailyRiskMode?: 'FIXED_INR' | 'PERCENT_CAPITAL';
+  maxDailyLossRupees?: number;
+  maxDailyLossPct?: number;
+  todayNetPnl?: number;
   maxLotsCap: number;
   indexStopLossPoints: number;
   optionDelta: number;
   isOptionBuying: boolean;
   lotSize: number;
   optionLtp?: number | null;
+  isOptionLtpLive?: boolean;
 }): RiskBasedLotCalculation {
   const effectiveDelta = params.isOptionBuying
     ? Math.max(0.2, Math.min(1, params.optionDelta || 0.5))
     : 1;
-  const optionSlPoints = Math.max(
+  const lotSize = Math.max(1, Math.round(params.lotSize || 1));
+
+  const hasValidLtp =
+    params.isOptionBuying &&
+    typeof params.optionLtp === 'number' &&
+    Number.isFinite(params.optionLtp) &&
+    params.optionLtp > 0;
+  const optionLtpUsed = hasValidLtp
+    ? Math.round((params.optionLtp as number) * 100) / 100
+    : null;
+
+  // For option buying, option SL cannot exceed the live traded option premium itself
+  const rawOptionSlPoints = Math.max(
     0.5,
     Math.round(params.indexStopLossPoints * effectiveDelta * 100) / 100
   );
-  const lotSize = Math.max(1, Math.round(params.lotSize || 1));
+  const optionSlPoints =
+    optionLtpUsed !== null
+      ? Math.max(0.5, Math.min(rawOptionSlPoints, optionLtpUsed))
+      : rawOptionSlPoints;
+
   const riskPerLotRupees = Math.max(
     1,
     Math.round(optionSlPoints * lotSize * 100) / 100
@@ -410,54 +440,86 @@ export function calculateRiskBasedLots(params: {
           100,
           Math.round((equityBase * Math.max(0.1, params.riskPerTradePct)) / 100)
         )
-      : Math.max(100, Math.round(params.riskPerTradeRupees));
+      : Math.max(100, Math.round(params.riskPerTradeRupees || 100));
 
-  const rawLotsByRisk = Math.max(
-    1,
-    Math.floor(allowedRiskRupees / riskPerLotRupees)
+  const dailyMode = params.dailyRiskMode || 'FIXED_INR';
+  const allowedDailyRiskRupees =
+    dailyMode === 'PERCENT_CAPITAL'
+      ? Math.max(
+          200,
+          Math.round(
+            (equityBase * Math.max(0.25, params.maxDailyLossPct ?? 5)) / 100
+          )
+        )
+      : Math.max(200, Math.round(params.maxDailyLossRupees || 5000));
+
+  const todayLossUsed =
+    typeof params.todayNetPnl === 'number' && params.todayNetPnl < 0
+      ? Math.abs(params.todayNetPnl)
+      : 0;
+  const remainingDailyRiskRupees = Math.max(
+    0,
+    Math.round(allowedDailyRiskRupees - todayLossUsed)
+  );
+  const dailyLimitReached = remainingDailyRiskRupees <= 0;
+
+  const cappedByDailyRisk =
+    !dailyLimitReached && remainingDailyRiskRupees < allowedRiskRupees;
+  const effectiveRiskBudgetRupees = Math.min(
+    allowedRiskRupees,
+    remainingDailyRiskRupees
+  );
+
+  const rawLotsByRisk = Math.floor(
+    effectiveRiskBudgetRupees / riskPerLotRupees
   );
   const maxLotsCap = Math.max(1, Math.floor(params.maxLotsCap || 20));
 
-  const hasValidLtp =
-    params.isOptionBuying &&
-    typeof params.optionLtp === 'number' &&
-    Number.isFinite(params.optionLtp) &&
-    params.optionLtp > 0;
-
-  const capitalPerLotRupees = hasValidLtp
-    ? Math.round((params.optionLtp as number) * lotSize * 100) / 100
-    : null;
+  const capitalPerLotRupees =
+    optionLtpUsed !== null
+      ? Math.round(optionLtpUsed * lotSize * 100) / 100
+      : null;
   const affordableLots =
-    capitalPerLotRupees && capitalPerLotRupees > 0
+    capitalPerLotRupees !== null && capitalPerLotRupees > 0
       ? Math.floor(equityBase / capitalPerLotRupees)
       : null;
+  const insufficientCapital =
+    affordableLots !== null && affordableLots < 1;
 
-  let recommendedLots = rawLotsByRisk;
   let cappedByMaxLots = false;
   let cappedByCapital = false;
 
-  if (recommendedLots > maxLotsCap) {
-    recommendedLots = maxLotsCap;
+  // Executable lots can be 0 when daily loss limit is breached or wallet cannot buy 1 lot at live option LTP
+  let executableLots = dailyLimitReached || insufficientCapital ? 0 : Math.max(1, rawLotsByRisk);
+  if (executableLots > maxLotsCap) {
+    executableLots = maxLotsCap;
     cappedByMaxLots = true;
   }
   if (
     affordableLots !== null &&
-    affordableLots >= 1 &&
-    recommendedLots > affordableLots
+    executableLots > affordableLots
   ) {
-    recommendedLots = affordableLots;
+    executableLots = Math.max(0, affordableLots);
     cappedByCapital = true;
   }
-  recommendedLots = Math.max(1, recommendedLots);
+
+  // Strategy engine backtest requires >= 1 lot; UI displays executableLots when blocked
+  const recommendedLots = Math.max(1, executableLots);
 
   return {
     optionSlPoints,
     riskPerLotRupees,
     allowedRiskRupees,
-    rawLotsByRisk,
+    allowedDailyRiskRupees,
+    remainingDailyRiskRupees,
+    effectiveRiskBudgetRupees,
+    rawLotsByRisk: Math.max(0, rawLotsByRisk),
+    optionLtpUsed,
+    isOptionLtpLive: Boolean(hasValidLtp && params.isOptionLtpLive),
     capitalPerLotRupees,
     affordableLots,
     recommendedLots,
+    executableLots,
     totalRiskAtRecommendedLots: Math.round(recommendedLots * riskPerLotRupees),
     totalCapitalRequired:
       capitalPerLotRupees !== null
@@ -465,6 +527,9 @@ export function calculateRiskBasedLots(params: {
         : null,
     cappedByCapital,
     cappedByMaxLots,
+    cappedByDailyRisk,
+    insufficientCapital,
+    dailyLimitReached,
   };
 }
 

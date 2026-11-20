@@ -14,9 +14,9 @@ import {
   Pause,
   Play,
   RotateCcw,
-  Settings,
   Upload,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
@@ -38,7 +38,7 @@ import {
   OptionTradeDesk,
 } from './components/OptionTradeDesk';
 import { PaperCalendarView } from './components/PaperCalendarView';
-import { PaperWalletModal } from './components/PaperWalletModal';
+import { PaperWalletView } from './components/PaperWalletView';
 import { SettingsSection, SettingsView } from './components/SettingsView';
 import { StrategyControls } from './components/StrategyControls';
 import { TopBar, TradingMode, WorkspaceTab } from './components/TopBar';
@@ -50,6 +50,7 @@ import { formatINR } from './utils/formatters';
 import { normalizeFyersSymbol } from './utils/fyersSymbols';
 import {
   calculateRiskBasedLots,
+  computeOptionRecommendation,
   getFallbackInstrumentMeta,
   InstrumentMeta,
 } from './utils/optionsEngine';
@@ -239,7 +240,6 @@ export default function App() {
   const saveTimerRef = useRef<number | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [isPaperWalletOpen, setIsPaperWalletOpen] = useState(false);
   const [liveOptionInfo, setLiveOptionInfo] =
     useState<LiveOptionTickPayload | null>(null);
   const [copiedRecoveryBanner, setCopiedRecoveryBanner] = useState(false);
@@ -1056,6 +1056,64 @@ export default function App() {
     paperWalletCtrl.wallet.startingCapital,
   ]);
 
+  const activeSpotPrice =
+    (selectedScenarioId === 'fyers_live' && fyersFeed.latestQuote?.ltp) ||
+    lastCandle?.close ||
+    24500;
+
+  const activeOptionPriceSnapshot = useMemo(() => {
+    const streamedLtp =
+      fyersFeed.latestOptionQuote && fyersFeed.latestOptionQuote.ltp > 0
+        ? fyersFeed.latestOptionQuote.ltp
+        : null;
+    if (streamedLtp !== null) {
+      return {
+        ltp: streamedLtp,
+        isLive: true,
+        label:
+          liveOptionInfo?.contractLabel ||
+          fyersFeed.latestOptionQuote?.symbol ||
+          null,
+      };
+    }
+    if (liveOptionInfo?.ltp && liveOptionInfo.ltp > 0) {
+      return {
+        ltp: liveOptionInfo.ltp,
+        isLive: liveOptionInfo.isLive,
+        label: liveOptionInfo.contractLabel,
+      };
+    }
+    const fallbackRec = computeOptionRecommendation({
+      symbol: activeLabSymbol,
+      spotPrice: activeSpotPrice,
+      direction: result.finalBias === 'BEARISH' ? 'SHORT' : 'LONG',
+      targetDelta: config.optionDeltaEstimate || 0.5,
+      slPoints: config.stopLossPoints,
+      targetPoints: config.targetPoints,
+      lotSize: config.lotSize,
+      lots: 1,
+      strikeStep: labInstrumentMeta.strikeStep,
+      approxFuturesMargin: labInstrumentMeta.approxFuturesMargin,
+    });
+    return {
+      ltp: fallbackRec.optionEntryPrice,
+      isLive: false,
+      label: fallbackRec.contractLabel,
+    };
+  }, [
+    fyersFeed.latestOptionQuote,
+    liveOptionInfo,
+    activeLabSymbol,
+    activeSpotPrice,
+    result.finalBias,
+    config.optionDeltaEstimate,
+    config.stopLossPoints,
+    config.targetPoints,
+    config.lotSize,
+    labInstrumentMeta.strikeStep,
+    labInstrumentMeta.approxFuturesMargin,
+  ]);
+
   const lotCalculation = useMemo(
     () =>
       calculateRiskBasedLots({
@@ -1064,21 +1122,29 @@ export default function App() {
         riskMode: paperWalletCtrl.wallet.riskMode,
         riskPerTradeRupees: paperWalletCtrl.wallet.riskPerTradeRupees,
         riskPerTradePct: paperWalletCtrl.wallet.riskPerTradePct,
+        dailyRiskMode: paperWalletCtrl.wallet.dailyRiskMode,
+        maxDailyLossRupees: paperWalletCtrl.wallet.maxDailyLossRupees,
+        maxDailyLossPct: paperWalletCtrl.wallet.maxDailyLossPct,
+        todayNetPnl: walletMetrics.todayRealizedPnl + walletMetrics.liveOpenMtm,
         maxLotsCap: paperWalletCtrl.wallet.maxLotsCap,
         indexStopLossPoints: config.stopLossPoints,
         optionDelta: config.optionDeltaEstimate,
         isOptionBuying: config.instrumentType === 'NIFTY_ATM_OPT',
         lotSize: config.lotSize,
-        optionLtp: liveOptionInfo?.ltp ?? null,
+        optionLtp: activeOptionPriceSnapshot.ltp,
+        isOptionLtpLive: activeOptionPriceSnapshot.isLive,
       }),
     [
       paperWalletCtrl.wallet,
       walletMetrics.liveBalance,
+      walletMetrics.todayRealizedPnl,
+      walletMetrics.liveOpenMtm,
       config.stopLossPoints,
       config.optionDeltaEstimate,
       config.instrumentType,
       config.lotSize,
-      liveOptionInfo?.ltp,
+      activeOptionPriceSnapshot.ltp,
+      activeOptionPriceSnapshot.isLive,
     ]
   );
 
@@ -1362,9 +1428,6 @@ export default function App() {
           telegramArmed={telegramAlerts.isArmedForLive}
           telegramDestinationsCount={telegramAlerts.activeDestinationCount}
           paperWalletBalance={walletMetrics.liveBalance}
-          liveOpenMtm={walletMetrics.liveOpenMtm}
-          openPositionsCount={walletMetrics.activeOpenCount}
-          onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
         />
 
         <main className="flex-1 w-full max-w-[1400px] mx-auto px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-20 lg:pb-8 space-y-5 sm:space-y-6">
@@ -1541,7 +1604,7 @@ export default function App() {
                 onRemoveAttachedSymbol={handleRemoveAttachedStrategy}
                 lotCalculation={lotCalculation}
                 autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
-                onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
+                onOpenPaperWallet={() => handleSelectTab('wallet')}
               />
 
               {/* 4-Column Session KPI Strip */}
@@ -1790,7 +1853,7 @@ export default function App() {
                     }
                     onLiveOptionChange={setLiveOptionInfo}
                     lotCalculation={lotCalculation}
-                    onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
+                    onOpenPaperWallet={() => handleSelectTab('wallet')}
                     onChangeConfig={setConfig}
                   />
 
@@ -1837,7 +1900,7 @@ export default function App() {
               onRemoveAttachedStrategy={handleRemoveAttachedStrategy}
               lotCalculation={lotCalculation}
               autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
-              onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
+              onOpenPaperWallet={() => handleSelectTab('wallet')}
               onSaveBacktestToCalendar={(trades, meta) => {
                 const entries = tradeRecordsToPaperEntries(trades, {
                   symbol: meta.symbol,
@@ -1879,6 +1942,40 @@ export default function App() {
               isLiveAutoRecording={fyersFeed.isStreaming}
               onRecordCurrentLabSession={handleRecordLabOrdersAndPositions}
               onGoToLab={() => handleSelectTab('lab')}
+            />
+          )}
+
+          {activeTab === 'wallet' && (
+            <PaperWalletView
+              wallet={paperWalletCtrl.wallet}
+              onUpdateWallet={paperWalletCtrl.updateWallet}
+              onResetWallet={() => {
+                paperWalletCtrl.resetWalletDefaults();
+                toast.info('Paper Wallet & Risk defaults restored (₹1,00,000).');
+              }}
+              realizedPnl={walletMetrics.realizedPnl}
+              todayRealizedPnl={walletMetrics.todayRealizedPnl}
+              liveOpenMtm={walletMetrics.liveOpenMtm}
+              openPositionsCount={walletMetrics.activeOpenCount}
+              config={config}
+              activeSymbol={activeLabSymbol}
+              activeInstrumentMeta={labInstrumentMeta}
+              activeSpotPrice={activeSpotPrice}
+              activeLiveOptionLtp={
+                activeOptionPriceSnapshot.isLive
+                  ? activeOptionPriceSnapshot.ltp
+                  : null
+              }
+              activeLiveOptionLabel={activeOptionPriceSnapshot.label}
+              activeLotCalculation={lotCalculation}
+              fyersAuthenticated={Boolean(fyersFeed.status?.authenticated)}
+              canEditStrategy={isAdmin}
+              onApplyRecommendedLots={(lots) => {
+                setConfig((prev) => ({ ...prev, lots }));
+                toast.success(
+                  `Applied ${lots} risk-sized lots (${lots * config.lotSize} qty).`
+                );
+              }}
             />
           )}
 
@@ -1928,14 +2025,14 @@ export default function App() {
             ? ([
                 { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
                 { id: 'lab', label: 'Lab', icon: Activity },
-                { id: 'journal', label: 'Positions', icon: ClipboardList },
+                { id: 'wallet', label: 'Wallet', icon: Wallet },
                 { id: 'users', label: 'Users', icon: Users },
               ] as const)
             : ([
                 { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
                 { id: 'journal', label: 'Positions', icon: ClipboardList },
+                { id: 'wallet', label: 'Wallet', icon: Wallet },
                 { id: 'integrations', label: 'Broker', icon: Link2 },
-                { id: 'settings', label: 'Settings', icon: Settings },
               ] as const)
           ).map((item) => {
             const Icon = item.icon;
@@ -1965,30 +2062,6 @@ export default function App() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onImport={handleImportCandles}
-      />
-
-      <PaperWalletModal
-        isOpen={isPaperWalletOpen}
-        onClose={() => setIsPaperWalletOpen(false)}
-        wallet={paperWalletCtrl.wallet}
-        onUpdateWallet={paperWalletCtrl.updateWallet}
-        onResetWallet={() => {
-          paperWalletCtrl.resetWalletDefaults();
-          toast.info('Paper Wallet & Risk defaults restored.');
-        }}
-        realizedPnl={walletMetrics.realizedPnl}
-        todayRealizedPnl={walletMetrics.todayRealizedPnl}
-        liveOpenMtm={walletMetrics.liveOpenMtm}
-        openPositionsCount={walletMetrics.activeOpenCount}
-        config={config}
-        instrumentMeta={labInstrumentMeta}
-        lotCalculation={lotCalculation}
-        liveOptionLtp={liveOptionInfo?.ltp ?? null}
-        canEditStrategy={isAdmin}
-        onApplyRecommendedLots={(lots) => {
-          setConfig((prev) => ({ ...prev, lots }));
-          toast.success(`Applied ${lots} risk-sized lots (${lots * config.lotSize} qty).`);
-        }}
       />
 
       {/* Trust & Safety Modal: Confirm Switching to LIVE Mode */}

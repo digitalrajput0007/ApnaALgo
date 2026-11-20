@@ -58,9 +58,15 @@ export interface PublicSaaSUser {
   createdAt: number;
 }
 
+export const DEFAULT_VIRTUAL_WALLET_CAPITAL = 100000;
+
 export interface AdminManagedUser extends PublicSaaSUser {
   brokerConnected: boolean;
   connectedBrokers: BrokerId[];
+  fyersConnected: boolean;
+  isExpired: boolean;
+  daysRemaining: number | null;
+  paperWalletCapital: number;
 }
 
 export interface PasswordResetOtpRecord {
@@ -445,6 +451,7 @@ class SaaSStore {
   }
 
   listAdminUsers(): AdminManagedUser[] {
+    const now = Date.now();
     return Array.from(this.users.values())
       .sort((a, b) => {
         if (a.role === 'owner' && b.role !== 'owner') return -1;
@@ -454,10 +461,35 @@ class SaaSStore {
       .map((u) => {
         const brokersMap = this.brokerConnections.get(u.id) || {};
         const connectedBrokers = Object.keys(brokersMap) as BrokerId[];
+        const isExpired =
+          u.role !== 'owner' &&
+          typeof u.subscriptionExpiresAt === 'number' &&
+          u.subscriptionExpiresAt <= now;
+        const daysRemaining =
+          u.role === 'owner' || typeof u.subscriptionExpiresAt !== 'number'
+            ? null
+            : Math.max(
+                0,
+                Math.ceil((u.subscriptionExpiresAt - now) / (24 * 60 * 60 * 1000))
+              );
+        const ws = this.workspaces.get(u.id);
+        const rawCap = Number(
+          (ws?.paperWallet as { startingCapital?: unknown } | null)
+            ?.startingCapital
+        );
+        const paperWalletCapital =
+          Number.isFinite(rawCap) && rawCap >= 1000
+            ? Math.round(rawCap)
+            : DEFAULT_VIRTUAL_WALLET_CAPITAL;
+
         return {
           ...toPublicUser(u),
           brokerConnected: connectedBrokers.length > 0,
           connectedBrokers,
+          fyersConnected: connectedBrokers.includes('fyers'),
+          isExpired,
+          daysRemaining,
+          paperWalletCapital,
         };
       });
   }
@@ -514,27 +546,46 @@ class SaaSStore {
   createCustomerByAdmin(params: {
     name: string;
     email: string;
-    subscriptionPlan: Exclude<SubscriptionPlan, 'admin'>;
-  }): { user: SaaSUser; defaultPassword: string } {
+    role?: 'owner' | 'trader';
+    subscriptionPlan?: Exclude<SubscriptionPlan, 'admin'>;
+    initialVirtualBalance?: number;
+  }): { user: SaaSUser; defaultPassword: string; paperWalletCapital: number } {
     const normalizedEmail = params.email.trim().toLowerCase();
     if (this.usersByEmail.has(normalizedEmail)) {
       throw new Error('An account with this email already exists.');
     }
-    const planDays = SUBSCRIPTION_PLAN_DAYS[params.subscriptionPlan] || 30;
+    const role: 'owner' | 'trader' =
+      params.role === 'owner' ? 'owner' : 'trader';
+    const isAdminRole = role === 'owner';
+    const plan: Exclude<SubscriptionPlan, 'admin'> =
+      params.subscriptionPlan || '1m';
+    const planDays = SUBSCRIPTION_PLAN_DAYS[plan] || 30;
     const { hash, salt } = hashPassword(DEFAULT_CUSTOMER_PASSWORD);
     const recoveryKey = generateRecoveryKeyString();
     const rec = hashPassword(normalizeRecoveryKey(recoveryKey));
     const now = Date.now();
+    const virtualCapital = Math.max(
+      1000,
+      Math.min(
+        1_000_000_000,
+        Math.round(
+          Number(params.initialVirtualBalance) || DEFAULT_VIRTUAL_WALLET_CAPITAL
+        )
+      )
+    );
+
     const user: SaaSUser = {
       id: `usr_${crypto.randomBytes(12).toString('hex')}`,
       name: params.name.trim(),
       email: normalizedEmail,
-      role: 'trader',
+      role,
       status: 'active',
       mustChangePassword: true,
-      subscriptionPlan: params.subscriptionPlan,
+      subscriptionPlan: isAdminRole ? 'admin' : plan,
       subscriptionStartedAt: now,
-      subscriptionExpiresAt: now + planDays * 24 * 60 * 60 * 1000,
+      subscriptionExpiresAt: isAdminRole
+        ? null
+        : now + planDays * 24 * 60 * 60 * 1000,
       passwordHash: hash,
       passwordSalt: salt,
       avatarDataUrl: null,
@@ -547,17 +598,81 @@ class SaaSStore {
     this.users.set(user.id, user);
     this.usersByEmail.set(normalizedEmail, user);
     this.persistUsers();
-    return { user, defaultPassword: DEFAULT_CUSTOMER_PASSWORD };
+
+    // Initialize user's Paper Trading Wallet with admin-assigned virtual money (default ₹1,00,000)
+    this.updateWorkspace(user.id, {
+      paperWallet: {
+        startingCapital: virtualCapital,
+        riskMode: 'FIXED_INR',
+        riskPerTradeRupees: Math.max(500, Math.round(virtualCapital * 0.02)),
+        riskPerTradePct: 2,
+        dailyRiskMode: 'FIXED_INR',
+        maxDailyLossRupees: Math.max(1000, Math.round(virtualCapital * 0.05)),
+        maxDailyLossPct: 5,
+        maxLotsCap: 25,
+        autoSizeLots: true,
+      },
+    });
+
+    return {
+      user,
+      defaultPassword: DEFAULT_CUSTOMER_PASSWORD,
+      paperWalletCapital: virtualCapital,
+    };
+  }
+
+  updateUserVirtualBalanceByAdmin(
+    targetUserId: string,
+    startingCapital: number
+  ): { ok: boolean; user?: SaaSUser; paperWalletCapital?: number; error?: string } {
+    const user = this.users.get(targetUserId);
+    if (!user) return { ok: false, error: 'User not found.' };
+    const sanitized = Math.max(
+      1000,
+      Math.min(1_000_000_000, Math.round(Number(startingCapital) || 0))
+    );
+    const currentWs = this.getWorkspace(user.id);
+    const existingWallet =
+      currentWs.paperWallet && typeof currentWs.paperWallet === 'object'
+        ? currentWs.paperWallet
+        : {};
+    this.updateWorkspace(user.id, {
+      paperWallet: {
+        riskMode: 'FIXED_INR',
+        riskPerTradeRupees: Math.max(500, Math.round(sanitized * 0.02)),
+        riskPerTradePct: 2,
+        dailyRiskMode: 'FIXED_INR',
+        maxDailyLossRupees: Math.max(1000, Math.round(sanitized * 0.05)),
+        maxDailyLossPct: 5,
+        maxLotsCap: 25,
+        autoSizeLots: true,
+        ...existingWallet,
+        startingCapital: sanitized,
+      },
+    });
+    return { ok: true, user, paperWalletCapital: sanitized };
   }
 
   setUserStatusByAdmin(
     targetUserId: string,
-    status: AccountStatus
+    status: AccountStatus,
+    actingAdminId?: string
   ): { ok: boolean; user?: SaaSUser; error?: string } {
     const user = this.users.get(targetUserId);
     if (!user) return { ok: false, error: 'User not found.' };
-    if (user.role === 'owner') {
-      return { ok: false, error: 'Admin account cannot be deactivated.' };
+    if (actingAdminId && user.id === actingAdminId) {
+      return { ok: false, error: 'You cannot deactivate your own active Admin account.' };
+    }
+    if (user.role === 'owner' && status === 'deactivated') {
+      const otherActiveAdmins = Array.from(this.users.values()).filter(
+        (u) => u.role === 'owner' && u.id !== user.id && u.status !== 'deactivated'
+      );
+      if (otherActiveAdmins.length === 0) {
+        return {
+          ok: false,
+          error: 'At least one active Admin account must remain.',
+        };
+      }
     }
     user.status = status;
     user.updatedAt = Date.now();
@@ -571,14 +686,15 @@ class SaaSStore {
   }
 
   resetUserPasswordToDefaultByAdmin(
-    targetUserId: string
+    targetUserId: string,
+    actingAdminId?: string
   ): { ok: boolean; user?: SaaSUser; defaultPassword?: string; error?: string } {
     const user = this.users.get(targetUserId);
     if (!user) return { ok: false, error: 'User not found.' };
-    if (user.role === 'owner') {
+    if (actingAdminId && user.id === actingAdminId) {
       return {
         ok: false,
-        error: 'Use Account Security settings to change the Admin password.',
+        error: 'Use Account Security settings to change your own password.',
       };
     }
     const { hash, salt } = hashPassword(DEFAULT_CUSTOMER_PASSWORD);

@@ -21,7 +21,7 @@ function loadLocalWallet(userId: string | null): PaperWalletConfig {
       ...DEFAULT_PAPER_WALLET_CONFIG,
       ...parsed,
       startingCapital: Math.max(
-        5000,
+        1000,
         Number(parsed.startingCapital) ||
           DEFAULT_PAPER_WALLET_CONFIG.startingCapital
       ),
@@ -33,15 +33,27 @@ function loadLocalWallet(userId: string | null): PaperWalletConfig {
       riskPerTradePct: Math.max(
         0.1,
         Math.min(
-          25,
+          50,
           Number(parsed.riskPerTradePct) ||
             DEFAULT_PAPER_WALLET_CONFIG.riskPerTradePct
         )
       ),
+      dailyRiskMode:
+        parsed.dailyRiskMode === 'PERCENT_CAPITAL'
+          ? 'PERCENT_CAPITAL'
+          : 'FIXED_INR',
       maxDailyLossRupees: Math.max(
         200,
         Number(parsed.maxDailyLossRupees) ||
           DEFAULT_PAPER_WALLET_CONFIG.maxDailyLossRupees
+      ),
+      maxDailyLossPct: Math.max(
+        0.25,
+        Math.min(
+          50,
+          Number(parsed.maxDailyLossPct) ||
+            (DEFAULT_PAPER_WALLET_CONFIG.maxDailyLossPct ?? 5)
+        )
       ),
       maxLotsCap: Math.max(
         1,

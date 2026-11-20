@@ -984,7 +984,11 @@ async function startServer() {
       res.status(403).json({ error: 'Admin access required.' });
       return;
     }
-    res.json({ users: saasStore.listAdminUsers() });
+    res.json({
+      users: saasStore.listAdminUsers(),
+      defaultCustomerPassword: 'neo@123',
+      currentAdminId: user.id,
+    });
   });
 
   app.post('/api/admin/users', (req: Request, res: Response) => {
@@ -998,14 +1002,34 @@ async function startServer() {
       return;
     }
 
-    const { name, email, subscriptionPlan } = (req.body || {}) as {
+    const {
+      name,
+      email,
+      role: rawRole,
+      userType,
+      subscriptionPlan,
+      initialVirtualBalance,
+      virtualBalance,
+    } = (req.body || {}) as {
       name?: string;
       email?: string;
+      role?: string;
+      userType?: string;
       subscriptionPlan?: string;
+      initialVirtualBalance?: number;
+      virtualBalance?: number;
     };
 
     const trimmedName = typeof name === 'string' ? name.trim() : '';
     const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const requestedType = String(userType || rawRole || 'customer')
+      .trim()
+      .toLowerCase();
+    const resolvedRole: 'owner' | 'trader' =
+      requestedType === 'admin' || requestedType === 'owner'
+        ? 'owner'
+        : 'trader';
+
     const validPlans: Array<Exclude<SubscriptionPlan, 'admin'>> = [
       '1m',
       '3m',
@@ -1018,10 +1042,23 @@ async function startServer() {
       ? (subscriptionPlan as Exclude<SubscriptionPlan, 'admin'>)
       : '1m';
 
+    const rawVirtual =
+      initialVirtualBalance !== undefined
+        ? Number(initialVirtualBalance)
+        : virtualBalance !== undefined
+        ? Number(virtualBalance)
+        : 100000;
+    if (!Number.isFinite(rawVirtual) || rawVirtual < 1000 || rawVirtual > 1_000_000_000) {
+      res.status(400).json({
+        error: 'Virtual wallet money must be between ₹1,000 and ₹100 Cr.',
+      });
+      return;
+    }
+
     if (trimmedName.length < 2 || trimmedName.length > 80) {
       res
         .status(400)
-        .json({ error: 'Customer name must be 2–80 characters.' });
+        .json({ error: 'Full name must be 2–80 characters.' });
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
@@ -1030,22 +1067,67 @@ async function startServer() {
     }
 
     try {
-      const { user: created, defaultPassword } =
-        saasStore.createCustomerByAdmin({
-          name: trimmedName,
-          email: trimmedEmail,
-          subscriptionPlan: plan,
-        });
+      const {
+        user: created,
+        defaultPassword,
+        paperWalletCapital,
+      } = saasStore.createCustomerByAdmin({
+        name: trimmedName,
+        email: trimmedEmail,
+        role: resolvedRole,
+        subscriptionPlan: plan,
+        initialVirtualBalance: Math.round(rawVirtual),
+      });
       res.status(201).json({
         ok: true,
-        user: toPublicUser(created),
+        user: {
+          ...toPublicUser(created),
+          paperWalletCapital,
+        },
         defaultPassword,
+        paperWalletCapital,
       });
     } catch (err) {
       const msg =
-        err instanceof Error ? err.message : 'Failed to create customer.';
+        err instanceof Error ? err.message : 'Failed to create user account.';
       res.status(409).json({ error: msg });
     }
+  });
+
+  app.patch('/api/admin/users/:targetUserId/wallet', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Admin access required.' });
+      return;
+    }
+    const rawAmount = Number(
+      req.body?.startingCapital ?? req.body?.virtualBalance
+    );
+    if (!Number.isFinite(rawAmount) || rawAmount < 1000 || rawAmount > 1_000_000_000) {
+      res.status(400).json({
+        error: 'Virtual wallet amount must be between ₹1,000 and ₹100 Cr.',
+      });
+      return;
+    }
+    const outcome = saasStore.updateUserVirtualBalanceByAdmin(
+      req.params.targetUserId,
+      Math.round(rawAmount)
+    );
+    if (!outcome.ok || !outcome.user) {
+      res
+        .status(400)
+        .json({ error: outcome.error || 'Could not update wallet balance.' });
+      return;
+    }
+    res.json({
+      ok: true,
+      user: toPublicUser(outcome.user),
+      paperWalletCapital: outcome.paperWalletCapital,
+    });
   });
 
   app.patch('/api/admin/users/:targetUserId/status', (req: Request, res: Response) => {
@@ -1062,7 +1144,8 @@ async function startServer() {
       req.body?.status === 'deactivated' ? 'deactivated' : 'active';
     const outcome = saasStore.setUserStatusByAdmin(
       req.params.targetUserId,
-      status
+      status,
+      user.id
     );
     if (!outcome.ok || !outcome.user) {
       res.status(400).json({ error: outcome.error || 'Could not update status.' });
@@ -1084,7 +1167,8 @@ async function startServer() {
         return;
       }
       const outcome = saasStore.resetUserPasswordToDefaultByAdmin(
-        req.params.targetUserId
+        req.params.targetUserId,
+        user.id
       );
       if (!outcome.ok || !outcome.user) {
         res
