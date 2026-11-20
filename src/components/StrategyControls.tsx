@@ -1,6 +1,10 @@
 import React from 'react';
 import { Check, RotateCcw, Save, Undo2 } from 'lucide-react';
 import { StrategyConfig } from '../types/strategy';
+import {
+  InstrumentMeta,
+  OPTION_DELTA_PRESETS,
+} from '../utils/optionsEngine';
 
 interface StrategyControlsProps {
   config: StrategyConfig;
@@ -10,6 +14,8 @@ interface StrategyControlsProps {
   justSaved?: boolean;
   onSave?: () => void;
   onDiscard?: () => void;
+  instrumentMeta?: InstrumentMeta | null;
+  loadingLotSize?: boolean;
 }
 
 export const StrategyControls: React.FC<StrategyControlsProps> = ({
@@ -20,6 +26,8 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
   justSaved = false,
   onSave,
   onDiscard,
+  instrumentMeta = null,
+  loadingLotSize = false,
 }) => {
   const updateField = <K extends keyof StrategyConfig>(
     key: K,
@@ -451,8 +459,19 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
 
       {/* Section 4: Fyers Sizing & Instrument Mapping */}
       <div className="px-5 py-4 space-y-3.5">
-        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-          04. Sizing &amp; Instrument
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+            04. Sizing &amp; Instrument
+          </span>
+          {instrumentMeta && (
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+              {loadingLotSize
+                ? 'Syncing lot...'
+                : instrumentMeta.fnoEnabled
+                ? `${instrumentMeta.underlying} · Auto ${instrumentMeta.lotSize}`
+                : `${instrumentMeta.underlying} · Cash`}
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
@@ -465,7 +484,7 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            NIFTY Futures
+            {instrumentMeta?.underlying || 'Index'} Futures
           </button>
           <button
             type="button"
@@ -476,24 +495,36 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            ATM Option (CE/PE)
+            Options Buying
           </button>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Lot Size
+            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 flex items-center justify-between gap-1">
+              <span>Lot Size</span>
+              {instrumentMeta?.fnoEnabled &&
+                config.lotSize !== instrumentMeta.lotSize && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateField('lotSize', instrumentMeta.lotSize)
+                    }
+                    className="text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Use {instrumentMeta.lotSize}
+                  </button>
+                )}
             </span>
             <input
               type="number"
               min={1}
-              max={500}
+              max={25000}
               value={config.lotSize}
               onChange={(e) =>
                 updateField(
                   'lotSize',
-                  Math.max(1, Number(e.target.value) || 75)
+                  Math.max(1, Number(e.target.value) || 1)
                 )
               }
               className={inputCls}
@@ -506,7 +537,7 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
             <input
               type="number"
               min={1}
-              max={50}
+              max={100}
               value={config.lots}
               onChange={(e) =>
                 updateField('lots', Math.max(1, Number(e.target.value) || 1))
@@ -516,13 +547,81 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
           </label>
         </div>
 
-        {config.instrumentType === 'NIFTY_ATM_OPT' && (
-          <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2">
-            Estimated P&amp;L scales Spot points by ATM delta (
-            <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
-              {config.optionDeltaEstimate.toFixed(2)}
+        {instrumentMeta?.nearFuturesSymbol && (
+          <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <span>Near Fut</span>
+            <span className="text-slate-700 dark:text-slate-300 truncate max-w-[175px]">
+              {instrumentMeta.nearFuturesSymbol}
             </span>
-            ). Execution triggers stay anchored to NIFTY 5m Index candles.
+          </div>
+        )}
+
+        {config.instrumentType === 'NIFTY_ATM_OPT' && (
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                Target Option Delta (CE/PE)
+              </span>
+              <span className="text-[11px] font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
+                {config.optionDeltaEstimate.toFixed(2)}Δ
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1">
+              {OPTION_DELTA_PRESETS.map((preset) => {
+                const isSelected =
+                  Math.abs(config.optionDeltaEstimate - preset.delta) < 0.03;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      updateField('optionDeltaEstimate', preset.delta)
+                    }
+                    className={`py-1.5 px-1 text-[10px] font-mono rounded border transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {preset.delta.toFixed(2)}Δ
+                  </button>
+                );
+              })}
+            </div>
+
+            <input
+              type="range"
+              min={0.45}
+              max={0.85}
+              step={0.01}
+              value={config.optionDeltaEstimate}
+              onChange={(e) =>
+                updateField(
+                  'optionDeltaEstimate',
+                  Number(e.target.value) || 0.65
+                )
+              }
+              aria-label="Target option delta"
+              className="w-full accent-blue-600 cursor-pointer"
+            />
+
+            <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 leading-relaxed">
+              Signals run on{' '}
+              <strong className="text-slate-800 dark:text-slate-200">
+                {instrumentMeta?.displayName || 'Index'} Spot
+              </strong>
+              ; Bullish buys{' '}
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                CE
+              </span>
+              , Bearish buys{' '}
+              <span className="text-red-600 dark:text-red-400 font-semibold">
+                PE
+              </span>{' '}
+              at ~{config.optionDeltaEstimate.toFixed(2)}Δ (1–2 strikes ITM
+              recommended to minimize theta bleed).
+            </div>
           </div>
         )}
       </div>

@@ -7,11 +7,31 @@ import {
   TelegramUserConfig,
 } from './telegramService';
 
+export type SubscriptionPlan = '1m' | '3m' | '6m' | '1y' | 'admin';
+export type AccountStatus = 'active' | 'deactivated';
+
+export const DEFAULT_CUSTOMER_PASSWORD = 'neo@123';
+
+export const SUBSCRIPTION_PLAN_DAYS: Record<
+  Exclude<SubscriptionPlan, 'admin'>,
+  number
+> = {
+  '1m': 30,
+  '3m': 90,
+  '6m': 180,
+  '1y': 365,
+};
+
 export interface SaaSUser {
   id: string;
   name: string;
   email: string;
   role: 'owner' | 'trader';
+  status?: AccountStatus;
+  mustChangePassword?: boolean;
+  subscriptionPlan?: SubscriptionPlan;
+  subscriptionStartedAt?: number | null;
+  subscriptionExpiresAt?: number | null;
   passwordHash: string;
   passwordSalt: string;
   avatarDataUrl?: string | null;
@@ -27,10 +47,20 @@ export interface PublicSaaSUser {
   name: string;
   email: string;
   role: 'owner' | 'trader';
+  status: AccountStatus;
+  mustChangePassword: boolean;
+  subscriptionPlan: SubscriptionPlan;
+  subscriptionStartedAt: number | null;
+  subscriptionExpiresAt: number | null;
   avatarDataUrl: string | null;
   bio: string;
   hasRecoveryKey: boolean;
   createdAt: number;
+}
+
+export interface AdminManagedUser extends PublicSaaSUser {
+  brokerConnected: boolean;
+  connectedBrokers: BrokerId[];
 }
 
 export interface PasswordResetOtpRecord {
@@ -203,6 +233,20 @@ export function toPublicUser(user: SaaSUser): PublicSaaSUser {
     name: user.name,
     email: user.email,
     role: user.role,
+    status: user.status === 'deactivated' ? 'deactivated' : 'active',
+    mustChangePassword: Boolean(user.mustChangePassword),
+    subscriptionPlan:
+      user.subscriptionPlan || (user.role === 'owner' ? 'admin' : '1m'),
+    subscriptionStartedAt:
+      user.subscriptionStartedAt !== undefined
+        ? user.subscriptionStartedAt
+        : user.createdAt,
+    subscriptionExpiresAt:
+      user.role === 'owner'
+        ? null
+        : user.subscriptionExpiresAt !== undefined
+        ? user.subscriptionExpiresAt
+        : null,
     avatarDataUrl: user.avatarDataUrl ?? null,
     bio: user.bio ?? '',
     hasRecoveryKey: Boolean(user.recoveryKeyHash && user.recoveryKeySalt),
@@ -390,6 +434,32 @@ class SaaSStore {
       .map(toPublicUser);
   }
 
+  listAdminUsers(): AdminManagedUser[] {
+    return Array.from(this.users.values())
+      .sort((a, b) => {
+        if (a.role === 'owner' && b.role !== 'owner') return -1;
+        if (b.role === 'owner' && a.role !== 'owner') return 1;
+        return b.createdAt - a.createdAt;
+      })
+      .map((u) => {
+        const brokersMap = this.brokerConnections.get(u.id) || {};
+        const connectedBrokers = Object.keys(brokersMap) as BrokerId[];
+        return {
+          ...toPublicUser(u),
+          brokerConnected: connectedBrokers.length > 0,
+          connectedBrokers,
+        };
+      });
+  }
+
+  private revokeUserSessions(userId: string): void {
+    for (const [tok, sess] of this.authSessions.entries()) {
+      if (sess.userId === userId) {
+        this.authSessions.delete(tok);
+      }
+    }
+  }
+
   createUser(
     name: string,
     email: string,
@@ -403,11 +473,19 @@ class SaaSStore {
     const recoveryKey = generateRecoveryKeyString();
     const rec = hashPassword(normalizeRecoveryKey(recoveryKey));
     const now = Date.now();
+    const isOwner = this.users.size === 0;
     const user: SaaSUser = {
       id: `usr_${crypto.randomBytes(12).toString('hex')}`,
       name: name.trim(),
       email: normalizedEmail,
-      role: this.users.size === 0 ? 'owner' : 'trader',
+      role: isOwner ? 'owner' : 'trader',
+      status: 'active',
+      mustChangePassword: false,
+      subscriptionPlan: isOwner ? 'admin' : '1m',
+      subscriptionStartedAt: now,
+      subscriptionExpiresAt: isOwner
+        ? null
+        : now + SUBSCRIPTION_PLAN_DAYS['1m'] * 24 * 60 * 60 * 1000,
       passwordHash: hash,
       passwordSalt: salt,
       avatarDataUrl: null,
@@ -423,13 +501,153 @@ class SaaSStore {
     return { user, recoveryKey };
   }
 
-  authenticateUser(email: string, password: string): SaaSUser | null {
-    const user = this.usersByEmail.get(email.trim().toLowerCase());
-    if (!user) return null;
-    if (!verifyPassword(password, user.passwordHash, user.passwordSalt)) {
-      return null;
+  createCustomerByAdmin(params: {
+    name: string;
+    email: string;
+    subscriptionPlan: Exclude<SubscriptionPlan, 'admin'>;
+  }): { user: SaaSUser; defaultPassword: string } {
+    const normalizedEmail = params.email.trim().toLowerCase();
+    if (this.usersByEmail.has(normalizedEmail)) {
+      throw new Error('An account with this email already exists.');
     }
-    return user;
+    const planDays = SUBSCRIPTION_PLAN_DAYS[params.subscriptionPlan] || 30;
+    const { hash, salt } = hashPassword(DEFAULT_CUSTOMER_PASSWORD);
+    const recoveryKey = generateRecoveryKeyString();
+    const rec = hashPassword(normalizeRecoveryKey(recoveryKey));
+    const now = Date.now();
+    const user: SaaSUser = {
+      id: `usr_${crypto.randomBytes(12).toString('hex')}`,
+      name: params.name.trim(),
+      email: normalizedEmail,
+      role: 'trader',
+      status: 'active',
+      mustChangePassword: true,
+      subscriptionPlan: params.subscriptionPlan,
+      subscriptionStartedAt: now,
+      subscriptionExpiresAt: now + planDays * 24 * 60 * 60 * 1000,
+      passwordHash: hash,
+      passwordSalt: salt,
+      avatarDataUrl: null,
+      bio: '',
+      recoveryKeyHash: rec.hash,
+      recoveryKeySalt: rec.salt,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.users.set(user.id, user);
+    this.usersByEmail.set(normalizedEmail, user);
+    this.persistUsers();
+    return { user, defaultPassword: DEFAULT_CUSTOMER_PASSWORD };
+  }
+
+  setUserStatusByAdmin(
+    targetUserId: string,
+    status: AccountStatus
+  ): { ok: boolean; user?: SaaSUser; error?: string } {
+    const user = this.users.get(targetUserId);
+    if (!user) return { ok: false, error: 'User not found.' };
+    if (user.role === 'owner') {
+      return { ok: false, error: 'Admin account cannot be deactivated.' };
+    }
+    user.status = status;
+    user.updatedAt = Date.now();
+    if (status === 'deactivated') {
+      this.revokeUserSessions(user.id);
+    }
+    this.users.set(user.id, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return { ok: true, user };
+  }
+
+  resetUserPasswordToDefaultByAdmin(
+    targetUserId: string
+  ): { ok: boolean; user?: SaaSUser; defaultPassword?: string; error?: string } {
+    const user = this.users.get(targetUserId);
+    if (!user) return { ok: false, error: 'User not found.' };
+    if (user.role === 'owner') {
+      return {
+        ok: false,
+        error: 'Use Account Security settings to change the Admin password.',
+      };
+    }
+    const { hash, salt } = hashPassword(DEFAULT_CUSTOMER_PASSWORD);
+    user.passwordHash = hash;
+    user.passwordSalt = salt;
+    user.mustChangePassword = true;
+    user.updatedAt = Date.now();
+    this.revokeUserSessions(user.id);
+    this.users.set(user.id, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return { ok: true, user, defaultPassword: DEFAULT_CUSTOMER_PASSWORD };
+  }
+
+  updateUserSubscriptionByAdmin(
+    targetUserId: string,
+    plan: Exclude<SubscriptionPlan, 'admin'>,
+    mode: 'from_now' | 'extend' = 'from_now'
+  ): { ok: boolean; user?: SaaSUser; error?: string } {
+    const user = this.users.get(targetUserId);
+    if (!user) return { ok: false, error: 'User not found.' };
+    if (user.role === 'owner') {
+      return { ok: false, error: 'Admin account does not expire.' };
+    }
+    const planDays = SUBSCRIPTION_PLAN_DAYS[plan] || 30;
+    const now = Date.now();
+    const baseTime =
+      mode === 'extend' &&
+      user.subscriptionExpiresAt &&
+      user.subscriptionExpiresAt > now
+        ? user.subscriptionExpiresAt
+        : now;
+    user.subscriptionPlan = plan;
+    user.subscriptionStartedAt = now;
+    user.subscriptionExpiresAt = baseTime + planDays * 24 * 60 * 60 * 1000;
+    user.updatedAt = now;
+    this.users.set(user.id, user);
+    this.usersByEmail.set(user.email.toLowerCase(), user);
+    this.persistUsers();
+    return { ok: true, user };
+  }
+
+  authenticateUser(email: string, password: string): SaaSUser | null {
+    const res = this.authenticateUserDetailed(email, password);
+    return res.ok && res.user ? res.user : null;
+  }
+
+  authenticateUserDetailed(
+    email: string,
+    password: string
+  ): { ok: boolean; user?: SaaSUser; error?: string; code?: number } {
+    const user = this.usersByEmail.get(email.trim().toLowerCase());
+    if (!user) {
+      return { ok: false, error: 'Invalid email or password.', code: 401 };
+    }
+    if (!verifyPassword(password, user.passwordHash, user.passwordSalt)) {
+      return { ok: false, error: 'Invalid email or password.', code: 401 };
+    }
+    if (user.status === 'deactivated') {
+      return {
+        ok: false,
+        error:
+          'Your account has been deactivated. Please contact your administrator.',
+        code: 403,
+      };
+    }
+    if (
+      user.role !== 'owner' &&
+      typeof user.subscriptionExpiresAt === 'number' &&
+      user.subscriptionExpiresAt <= Date.now()
+    ) {
+      return {
+        ok: false,
+        error:
+          'Your subscription period has expired. Please contact your administrator to renew.',
+        code: 403,
+      };
+    }
+    return { ok: true, user };
   }
 
   updateUserProfile(
@@ -458,20 +676,31 @@ class SaaSStore {
     userId: string,
     currentPassword: string,
     newPassword: string
-  ): { ok: boolean; error?: string } {
+  ): { ok: boolean; user?: SaaSUser; error?: string } {
     const user = this.users.get(userId);
     if (!user) return { ok: false, error: 'Account not found.' };
     if (!verifyPassword(currentPassword, user.passwordHash, user.passwordSalt)) {
       return { ok: false, error: 'Current password is incorrect.' };
     }
+    if (
+      user.mustChangePassword &&
+      newPassword.trim() === DEFAULT_CUSTOMER_PASSWORD
+    ) {
+      return {
+        ok: false,
+        error:
+          'Please choose a personal password different from the default password (neo@123).',
+      };
+    }
     const { hash, salt } = hashPassword(newPassword);
     user.passwordHash = hash;
     user.passwordSalt = salt;
+    user.mustChangePassword = false;
     user.updatedAt = Date.now();
     this.users.set(userId, user);
     this.usersByEmail.set(user.email.toLowerCase(), user);
     this.persistUsers();
-    return { ok: true };
+    return { ok: true, user };
   }
 
   regenerateRecoveryKey(userId: string): string | null {
@@ -609,7 +838,23 @@ class SaaSStore {
       this.persistUsers();
       return null;
     }
-    return this.users.get(session.userId) ?? null;
+    const user = this.users.get(session.userId) ?? null;
+    if (!user) return null;
+    if (user.status === 'deactivated') {
+      this.authSessions.delete(token);
+      this.persistUsers();
+      return null;
+    }
+    if (
+      user.role !== 'owner' &&
+      typeof user.subscriptionExpiresAt === 'number' &&
+      user.subscriptionExpiresAt <= Date.now()
+    ) {
+      this.authSessions.delete(token);
+      this.persistUsers();
+      return null;
+    }
+    return user;
   }
 
   deleteAuthSession(token: string | undefined): void {

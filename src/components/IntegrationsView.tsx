@@ -87,6 +87,7 @@ export const IntegrationsView: React.FC<IntegrationsViewProps> = ({
         />
       ) : (
         <TelegramAlertsView
+          isAdmin={user.role === 'owner'}
           telegram={telegram}
           strategyConfig={strategyConfig}
           isLiveStreaming={fyersFeed.isStreaming}

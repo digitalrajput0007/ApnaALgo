@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Link2,
   Square,
+  Users,
   X,
 } from 'lucide-react';
 import { FyersLiveFeedController } from '../hooks/useFyersLiveFeed';
@@ -14,6 +15,7 @@ import { BrandLogo } from './BrandLogo';
 import { WorkspaceTab } from './TopBar';
 
 interface WorkspaceSidebarProps {
+  isAdmin: boolean;
   activeTab: WorkspaceTab;
   onSelectTab: (tab: WorkspaceTab) => void;
   fyersFeed: FyersLiveFeedController;
@@ -32,6 +34,7 @@ interface NavItem {
 }
 
 export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
+  isAdmin,
   activeTab,
   onSelectTab,
   fyersFeed,
@@ -41,32 +44,54 @@ export const WorkspaceSidebar: React.FC<WorkspaceSidebarProps> = ({
   mobileOpen,
   onCloseMobile,
 }) => {
-  const primaryItems: NavItem[] = [
-    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-    { id: 'lab', label: 'Strategy Lab', icon: Activity },
-    { id: 'backtest1y', label: 'Backtest', icon: BarChart3 },
-    {
-      id: 'journal',
-      label: 'Trades & Positions',
-      icon: ClipboardList,
-      meta: journalPositionCount > 0 ? String(journalPositionCount) : undefined,
-    },
-    {
-      id: 'calendar',
-      label: 'Paper Calendar',
-      icon: CalendarDays,
-      meta: paperTradeCount > 0 ? String(paperTradeCount) : undefined,
-    },
-    {
-      id: 'integrations',
-      label: 'Integrations',
-      icon: Link2,
-      meta:
-        connectedIntegrationsCount > 0
-          ? String(connectedIntegrationsCount)
-          : undefined,
-    },
-  ];
+  const primaryItems: NavItem[] = isAdmin
+    ? [
+        { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+        { id: 'lab', label: 'Strategy Lab', icon: Activity },
+        { id: 'backtest1y', label: 'Backtest', icon: BarChart3 },
+        {
+          id: 'journal',
+          label: 'Trades & Positions',
+          icon: ClipboardList,
+          meta:
+            journalPositionCount > 0 ? String(journalPositionCount) : undefined,
+        },
+        {
+          id: 'calendar',
+          label: 'Paper Calendar',
+          icon: CalendarDays,
+          meta: paperTradeCount > 0 ? String(paperTradeCount) : undefined,
+        },
+        {
+          id: 'integrations',
+          label: 'Integrations',
+          icon: Link2,
+          meta:
+            connectedIntegrationsCount > 0
+              ? String(connectedIntegrationsCount)
+              : undefined,
+        },
+        { id: 'users', label: 'User Management', icon: Users },
+      ]
+    : [
+        { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+        {
+          id: 'journal',
+          label: 'Trades & Positions',
+          icon: ClipboardList,
+          meta:
+            journalPositionCount > 0 ? String(journalPositionCount) : undefined,
+        },
+        {
+          id: 'integrations',
+          label: 'Broker & Alerts',
+          icon: Link2,
+          meta:
+            connectedIntegrationsCount > 0
+              ? String(connectedIntegrationsCount)
+              : undefined,
+        },
+      ];
 
   const handleSelect = (tab: WorkspaceTab) => {
     onSelectTab(tab);

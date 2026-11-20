@@ -31,10 +31,10 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   biasMode: 'LOCK_FOR_DAY',
   maxTradesPerDay: 4,
   stopAfterTargetHit: true,
-  lotSize: 75,
+  lotSize: 65,
   lots: 1,
   instrumentType: 'NIFTY_FUT',
-  optionDeltaEstimate: 0.52,
+  optionDeltaEstimate: 0.65,
   squareOffTime: '15:15',
 };
 

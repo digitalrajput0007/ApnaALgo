@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 
+export type SubscriptionPlan = '1m' | '3m' | '6m' | '1y' | 'admin';
+export type AccountStatus = 'active' | 'deactivated';
+
 export interface SaaSUser {
   id: string;
   name: string;
   email: string;
   role: 'owner' | 'trader';
+  status: AccountStatus;
+  mustChangePassword: boolean;
+  subscriptionPlan: SubscriptionPlan;
+  subscriptionStartedAt: number | null;
+  subscriptionExpiresAt: number | null;
   avatarDataUrl: string | null;
   bio: string;
   hasRecoveryKey: boolean;
@@ -166,12 +174,23 @@ export function useSaaSAuth() {
           credentials: 'include',
           body: JSON.stringify({ currentPassword, newPassword }),
         });
-        const data = (await resp.json()) as { ok?: boolean; error?: string };
+        const data = (await resp.json()) as {
+          ok?: boolean;
+          user?: SaaSUser;
+          error?: string;
+        };
         if (!resp.ok) {
           return {
             ok: false,
             error: data.error || 'Could not change password.',
           };
+        }
+        if (data.user) {
+          setUser(data.user);
+        } else {
+          setUser((prev) =>
+            prev ? { ...prev, mustChangePassword: false } : prev
+          );
         }
         return { ok: true };
       } catch (err) {
@@ -308,6 +327,7 @@ export function useSaaSAuth() {
 
   return {
     user,
+    isAdmin: user?.role === 'owner',
     registeredUsers,
     loading,
     authError,

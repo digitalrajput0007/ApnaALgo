@@ -27,6 +27,7 @@ import {
 import { StrategyConfig } from '../types/strategy';
 
 interface TelegramAlertsViewProps {
+  isAdmin?: boolean;
   telegram: TelegramAlertsController;
   strategyConfig: StrategyConfig;
   isLiveStreaming: boolean;
@@ -63,6 +64,7 @@ function ChatTypeIcon({ type }: { type: TelegramChatType }) {
 }
 
 export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
+  isAdmin = false,
   telegram,
   strategyConfig,
   isLiveStreaming,
@@ -450,33 +452,35 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
   }[] = [
     {
       key: 'biasConfirmed',
-      title: 'Bias Confirmed',
-      description:
-        'Alert as soon as the 4-candle Bullish or Bearish majority locks in for the session.',
+      title: isAdmin ? 'Bias Confirmed' : 'Session Signal Ready',
+      description: isAdmin
+        ? 'Alert as soon as the 4-candle Bullish or Bearish majority locks in for the session.'
+        : 'Alert when the automated engine locks in the session direction.',
     },
     {
       key: 'entryConfirmed',
       title: 'Entry Confirmed',
-      description:
-        'Alert immediately when RSI zone + breakout buffer executes a Long or Short entry with SL & Target.',
+      description: isAdmin
+        ? 'Alert immediately when RSI zone + breakout buffer executes a Long or Short entry with SL & Target.'
+        : 'Alert immediately when an automated Long or Short entry executes with SL & Target.',
     },
     {
       key: 'slHit',
       title: 'Stop Loss Hit',
       description:
-        'Alert when strict stop loss exits a trade, showing realized loss and remaining daily setups.',
+        'Alert when strict stop loss exits a trade, showing realized loss.',
     },
     {
       key: 'targetHit',
       title: 'Target Hit',
       description:
-        'Alert when full target is achieved, showing P&L and confirming day-end trading halt.',
+        'Alert when full target is achieved, showing realized profit.',
     },
     {
       key: 'trailedCostExit',
-      title: '1:1 Breakeven Trail Exit',
+      title: 'Breakeven Trail Exit',
       description:
-        'Alert if a trade exits at cost after reaching 1:1 and trailing stop loss to entry.',
+        'Alert if a trade exits at cost after stop loss is trailed to entry.',
     },
     {
       key: 'eodSquareOff',
@@ -600,7 +604,7 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {isLiveStreaming ? (
               `Monitoring ${activeSymbol}`
-            ) : (
+            ) : isAdmin ? (
               <button
                 type="button"
                 onClick={onGoToLab}
@@ -608,6 +612,8 @@ export const TelegramAlertsView: React.FC<TelegramAlertsViewProps> = ({
               >
                 Open Strategy Lab to start feed
               </button>
+            ) : (
+              <span>Alerts dispatch automatically when trades execute</span>
             )}
           </div>
         </div>

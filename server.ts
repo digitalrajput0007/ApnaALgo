@@ -14,7 +14,14 @@ import {
   BrokerPublicStatus,
 } from './server/brokers/types';
 import { candleStore } from './server/candleStore';
-import { PublicSaaSUser, saasStore, toPublicUser } from './server/saasStore';
+import { instrumentMaster } from './server/instrumentMaster';
+import {
+  AccountStatus,
+  PublicSaaSUser,
+  saasStore,
+  SubscriptionPlan,
+  toPublicUser,
+} from './server/saasStore';
 import {
   DEFAULT_TELEGRAM_TRIGGERS,
   discoverTelegramChats,
@@ -500,6 +507,16 @@ async function startServer() {
   });
 
   app.post('/api/auth/register', (req: Request, res: Response) => {
+    // Only allow initial one-time Admin bootstrap when zero users exist;
+    // afterwards, only the Admin can create customer accounts from User Management.
+    if (saasStore.getUserCount() > 0) {
+      res.status(403).json({
+        error:
+          'Public sign-up is disabled. Please contact your administrator to create an account.',
+      });
+      return;
+    }
+
     const { name, email, password } = (req.body || {}) as {
       name?: string;
       email?: string;
@@ -552,15 +569,17 @@ async function startServer() {
       return;
     }
 
-    const user = saasStore.authenticateUser(trimmedEmail, rawPassword);
-    if (!user) {
-      res.status(401).json({ error: 'Invalid email or password.' });
+    const outcome = saasStore.authenticateUserDetailed(trimmedEmail, rawPassword);
+    if (!outcome.ok || !outcome.user) {
+      res
+        .status(outcome.code || 401)
+        .json({ error: outcome.error || 'Invalid email or password.' });
       return;
     }
 
-    const session = saasStore.createAuthSession(user.id);
+    const session = saasStore.createAuthSession(outcome.user.id);
     res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
-    res.json({ user: toPublicUser(user) });
+    res.json({ user: toPublicUser(outcome.user) });
   });
 
   app.post('/api/auth/logout', (req: Request, res: Response) => {
@@ -785,12 +804,12 @@ async function startServer() {
       currentPassword,
       newPassword
     );
-    if (!outcome.ok) {
+    if (!outcome.ok || !outcome.user) {
       res.status(400).json({ error: outcome.error || 'Could not update password.' });
       return;
     }
 
-    res.json({ ok: true });
+    res.json({ ok: true, user: toPublicUser(outcome.user) });
   });
 
   app.post('/api/account/recovery-key/regenerate', (req: Request, res: Response) => {
@@ -850,6 +869,177 @@ async function startServer() {
   });
 
   // =========================================================================
+  // 1C. ADMIN USER & SUBSCRIPTION MANAGEMENT (/api/admin/users/*)
+  // =========================================================================
+
+  app.get('/api/admin/users', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Admin access required.' });
+      return;
+    }
+    res.json({ users: saasStore.listAdminUsers() });
+  });
+
+  app.post('/api/admin/users', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Admin access required.' });
+      return;
+    }
+
+    const { name, email, subscriptionPlan } = (req.body || {}) as {
+      name?: string;
+      email?: string;
+      subscriptionPlan?: string;
+    };
+
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const trimmedEmail = typeof email === 'string' ? email.trim() : '';
+    const validPlans: Array<Exclude<SubscriptionPlan, 'admin'>> = [
+      '1m',
+      '3m',
+      '6m',
+      '1y',
+    ];
+    const plan = validPlans.includes(
+      subscriptionPlan as Exclude<SubscriptionPlan, 'admin'>
+    )
+      ? (subscriptionPlan as Exclude<SubscriptionPlan, 'admin'>)
+      : '1m';
+
+    if (trimmedName.length < 2 || trimmedName.length > 80) {
+      res
+        .status(400)
+        .json({ error: 'Customer name must be 2–80 characters.' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      res.status(400).json({ error: 'Please enter a valid email address.' });
+      return;
+    }
+
+    try {
+      const { user: created, defaultPassword } =
+        saasStore.createCustomerByAdmin({
+          name: trimmedName,
+          email: trimmedEmail,
+          subscriptionPlan: plan,
+        });
+      res.status(201).json({
+        ok: true,
+        user: toPublicUser(created),
+        defaultPassword,
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to create customer.';
+      res.status(409).json({ error: msg });
+    }
+  });
+
+  app.patch('/api/admin/users/:targetUserId/status', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Admin access required.' });
+      return;
+    }
+    const status: AccountStatus =
+      req.body?.status === 'deactivated' ? 'deactivated' : 'active';
+    const outcome = saasStore.setUserStatusByAdmin(
+      req.params.targetUserId,
+      status
+    );
+    if (!outcome.ok || !outcome.user) {
+      res.status(400).json({ error: outcome.error || 'Could not update status.' });
+      return;
+    }
+    res.json({ ok: true, user: toPublicUser(outcome.user) });
+  });
+
+  app.post(
+    '/api/admin/users/:targetUserId/reset-password',
+    (req: Request, res: Response) => {
+      const user = getAuthenticatedUserFromReq(req);
+      if (!user) {
+        res.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+      if (user.role !== 'owner') {
+        res.status(403).json({ error: 'Admin access required.' });
+        return;
+      }
+      const outcome = saasStore.resetUserPasswordToDefaultByAdmin(
+        req.params.targetUserId
+      );
+      if (!outcome.ok || !outcome.user) {
+        res
+          .status(400)
+          .json({ error: outcome.error || 'Could not reset password.' });
+        return;
+      }
+      res.json({
+        ok: true,
+        user: toPublicUser(outcome.user),
+        defaultPassword: outcome.defaultPassword,
+      });
+    }
+  );
+
+  app.patch(
+    '/api/admin/users/:targetUserId/subscription',
+    (req: Request, res: Response) => {
+      const user = getAuthenticatedUserFromReq(req);
+      if (!user) {
+        res.status(401).json({ error: 'Authentication required.' });
+        return;
+      }
+      if (user.role !== 'owner') {
+        res.status(403).json({ error: 'Admin access required.' });
+        return;
+      }
+      const validPlans: Array<Exclude<SubscriptionPlan, 'admin'>> = [
+        '1m',
+        '3m',
+        '6m',
+        '1y',
+      ];
+      const rawPlan = String(req.body?.subscriptionPlan || '');
+      if (
+        !validPlans.includes(rawPlan as Exclude<SubscriptionPlan, 'admin'>)
+      ) {
+        res.status(400).json({ error: 'Invalid subscription plan.' });
+        return;
+      }
+      const mode = req.body?.mode === 'extend' ? 'extend' : 'from_now';
+      const outcome = saasStore.updateUserSubscriptionByAdmin(
+        req.params.targetUserId,
+        rawPlan as Exclude<SubscriptionPlan, 'admin'>,
+        mode
+      );
+      if (!outcome.ok || !outcome.user) {
+        res
+          .status(400)
+          .json({ error: outcome.error || 'Could not update subscription.' });
+        return;
+      }
+      res.json({ ok: true, user: toPublicUser(outcome.user) });
+    }
+  );
+
+  // =========================================================================
   // 2. PER-USER PERSISTENT WORKSPACE DATA (/api/user/*)
   // =========================================================================
 
@@ -866,6 +1056,10 @@ async function startServer() {
     const user = getAuthenticatedUserFromReq(req);
     if (!user) {
       res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Strategy configuration is Admin-only.' });
       return;
     }
     const config = req.body?.config;
@@ -1740,6 +1934,107 @@ async function startServer() {
         return;
       }
       res.status(502).json({ error: msg });
+    }
+  });
+
+  // Auto-fetch F&O Futures Lot Size, Strike Step & Expiries from Fyers daily Symbol Master
+  app.get('/api/fyers/instrument-meta', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = getAuthenticatedUserFromReq(req);
+    if (!authUser) {
+      res.status(401).json({ error: 'Sign in to NeoAlgo first.' });
+      return;
+    }
+
+    const rawSymbol =
+      typeof req.query.symbol === 'string' ? req.query.symbol : '';
+    try {
+      const meta = await instrumentMaster.getInstrumentMeta(rawSymbol);
+      res.json(meta);
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Failed to resolve F&O instrument metadata',
+      });
+    }
+  });
+
+  // Lookup exact CE/PE option contract from Fyers Symbol Master + live option LTP if connected
+  app.get('/api/fyers/option-pick', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = getAuthenticatedUserFromReq(req);
+    if (!authUser) {
+      res.status(401).json({ error: 'Sign in to NeoAlgo first.' });
+      return;
+    }
+
+    const rawSymbol =
+      typeof req.query.symbol === 'string' ? req.query.symbol : '';
+    const strike = Number(req.query.strike);
+    const optionType =
+      String(req.query.optionType || '').toUpperCase() === 'PE' ? 'PE' : 'CE';
+    const expiryChoice =
+      req.query.expiry === 'next' ? 'next' : 'current';
+
+    if (!Number.isFinite(strike) || strike <= 0) {
+      res.status(400).json({ error: 'Valid numeric strike is required.' });
+      return;
+    }
+
+    try {
+      const contract = await instrumentMaster.lookupOptionContract({
+        symbol: rawSymbol,
+        strike,
+        optionType,
+        expiryChoice,
+      });
+
+      let liveLtp: number | null = null;
+      let changePct: number | null = null;
+      let volume: number | null = null;
+
+      if (contract.fyersOptionSymbol) {
+        const creds = getFyersCredentials();
+        const entry = getUserFyersEntry(req);
+        if (creds && entry) {
+          try {
+            const quote = await runWithFyersAutoRefresh(
+              entry.user.id,
+              entry.connection,
+              creds,
+              (token) =>
+                fetchFyersQuote(
+                  creds.appId,
+                  token,
+                  contract.fyersOptionSymbol as string
+                )
+            );
+            if (typeof quote.ltp === 'number' && quote.ltp > 0) {
+              liveLtp = quote.ltp;
+              changePct = quote.changePct ?? null;
+              volume = quote.volume ?? null;
+            }
+          } catch {
+            // Gracefully return contract ticker without live LTP if token expired or off-hours
+          }
+        }
+      }
+
+      res.json({
+        ...contract,
+        liveLtp,
+        changePct,
+        volume,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Failed to look up option contract',
+      });
     }
   });
 

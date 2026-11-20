@@ -39,6 +39,10 @@ import {
   FYERS_INDEX_PRESETS,
   normalizeFyersSymbol,
 } from '../utils/fyersSymbols';
+import {
+  getFallbackInstrumentMeta,
+  InstrumentMeta,
+} from '../utils/optionsEngine';
 
 interface YearlyBacktestViewProps {
   config: StrategyConfig;
@@ -185,6 +189,44 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   } | null>(null);
 
   const activeSymbol = normalizeFyersSymbol(customSymbol.trim() || symbol);
+  const [backtestInstrumentMeta, setBacktestInstrumentMeta] =
+    useState<InstrumentMeta>(() => getFallbackInstrumentMeta(activeSymbol));
+  const [loadingBacktestLot, setLoadingBacktestLot] = useState(false);
+
+  useEffect(() => {
+    const fallback = getFallbackInstrumentMeta(activeSymbol);
+    setBacktestInstrumentMeta(fallback);
+    if (!userId) return;
+
+    let cancelled = false;
+    setLoadingBacktestLot(true);
+    (async () => {
+      try {
+        const params = new URLSearchParams({ symbol: activeSymbol });
+        const resp = await fetch(
+          `/api/fyers/instrument-meta?${params.toString()}`,
+          { credentials: 'include', cache: 'no-store' }
+        );
+        if (!resp.ok || cancelled) return;
+        const meta = (await resp.json()) as InstrumentMeta;
+        if (cancelled) return;
+        setBacktestInstrumentMeta(meta);
+        if (meta.lotSize !== config.lotSize) {
+          onChangeConfig({ ...config, lotSize: meta.lotSize });
+        }
+      } catch {
+        // Keep fallback metadata
+      } finally {
+        if (!cancelled) setLoadingBacktestLot(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Only re-sync lot size when the backtest symbol changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSymbol, userId]);
 
   const applyQuickPreset = (daysCount: number) => {
     setActivePresetDays(daysCount);
@@ -1545,6 +1587,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
           justSaved={justSaved}
           onSave={onSaveConfig}
           onDiscard={onDiscardConfig}
+          instrumentMeta={backtestInstrumentMeta}
+          loadingLotSize={loadingBacktestLot}
         />
       </section>
     </div>

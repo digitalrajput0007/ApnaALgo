@@ -4,6 +4,8 @@ import {
   ArrowRight,
   BookmarkPlus,
   ChevronRight,
+  Link2,
+  ShieldCheck,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
@@ -23,11 +25,15 @@ import {
   getTodayIstYYYYMMDD,
   PaperTradeJournalController,
 } from '../hooks/usePaperTradeJournal';
+import { SaaSUser } from '../hooks/useSaaSAuth';
 import { BacktestResult, StrategyConfig } from '../types/strategy';
 import { formatINR, getNseMarketStatus } from '../utils/formatters';
 import { WorkspaceTab } from './TopBar';
 
 interface DashboardOverviewProps {
+  isAdmin: boolean;
+  user: SaaSUser;
+  fyersConnected: boolean;
   theme?: 'dark' | 'light';
   config: StrategyConfig;
   labResult: BacktestResult;
@@ -85,6 +91,9 @@ function exitReasonLabel(reason: string): string {
 }
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
+  isAdmin,
+  user,
+  fyersConnected,
   theme = 'dark',
   config,
   labResult,
@@ -100,6 +109,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const todayIst = getTodayIstYYYYMMDD();
   const currentMonth = todayIst.slice(0, 7);
   const marketStatus = useMemo(() => getNseMarketStatus(), []);
+
+  const subscriptionSummary = useMemo(() => {
+    const planMap: Record<string, string> = {
+      '1m': '1 Month',
+      '3m': '3 Months',
+      '6m': '6 Months',
+      '1y': '1 Year',
+      admin: 'Admin',
+    };
+    const label = planMap[user.subscriptionPlan] || 'Active';
+    if (!user.subscriptionExpiresAt) {
+      return { label, sub: 'Active subscription' };
+    }
+    const daysLeft = Math.max(
+      0,
+      Math.ceil((user.subscriptionExpiresAt - Date.now()) / (24 * 60 * 60 * 1000))
+    );
+    const expStr = new Date(user.subscriptionExpiresAt).toLocaleDateString(
+      'en-IN',
+      { day: 'numeric', month: 'short', year: 'numeric' }
+    );
+    return { label, sub: `Exp ${expStr} · ${daysLeft}d left` };
+  }, [user.subscriptionPlan, user.subscriptionExpiresAt]);
 
   const [activityTab, setActivityTab] = useState<
     'positions' | 'orders' | 'trades'
@@ -158,6 +190,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       };
     }
 
+    if (!isAdmin) {
+      return {
+        label: 'Today',
+        netPoints: 0,
+        netRupees: 0,
+        tradesCount: 0,
+        wins: 0,
+        losses: 0,
+        ordersCount: todayOrders.length,
+      };
+    }
+
     return {
       label: isLiveStreaming ? 'Live Session' : 'Active Session',
       netPoints: labResult.metrics.netPoints,
@@ -174,6 +218,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             ),
     };
   }, [
+    isAdmin,
     todayPositions,
     todayOrders.length,
     todayJournalDay,
@@ -242,6 +287,44 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       };
     }
 
+    if (!isAdmin) {
+      const closedPositions = orderJournal.positions.filter(
+        (p) => p.status === 'CLOSED'
+      );
+      const wins = closedPositions.filter((p) => p.pnlPoints > 0.5);
+      const losses = closedPositions.filter((p) => p.pnlPoints < -0.5);
+      const breakevens = closedPositions.length - wins.length - losses.length;
+      const netPoints = closedPositions.reduce((s, p) => s + p.pnlPoints, 0);
+      const netRupees = closedPositions.reduce((s, p) => s + p.pnlRupees, 0);
+      const grossWin = wins.reduce((s, p) => s + p.pnlPoints, 0);
+      const grossLoss = Math.abs(losses.reduce((s, p) => s + p.pnlPoints, 0));
+      const decided = wins.length + losses.length;
+      const accuracyPct = decided > 0 ? (wins.length / decided) * 100 : 0;
+      const avgWin = wins.length > 0 ? grossWin / wins.length : 0;
+      const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+      const pf =
+        grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? grossWin : 0;
+
+      return {
+        isCurrentMonth: true,
+        monthLabel: formatMonthLabel(currentMonth),
+        netPoints: Math.round(netPoints * 100) / 100,
+        netRupees: Math.round(netRupees),
+        winningDays: netRupees > 0 ? 1 : 0,
+        losingDays: netRupees < 0 ? 1 : 0,
+        wins: wins.length,
+        losses: losses.length,
+        breakevens,
+        totalTrades: closedPositions.length,
+        accuracyPct,
+        profitFactor: pf,
+        avgWin,
+        avgLoss,
+        maxDrawdown: 0,
+        bestDay: Math.max(0, netPoints),
+      };
+    }
+
     const wins = labResult.trades.filter((t) => t.pnlPoints > 0.5);
     const losses = labResult.trades.filter((t) => t.pnlPoints < -0.5);
     const breakevens = labResult.trades.length - wins.length - losses.length;
@@ -276,6 +359,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       bestDay: Math.max(0, labResult.metrics.netPoints),
     };
   }, [
+    isAdmin,
+    orderJournal.positions,
     activeMonthBucket,
     activeMonth,
     currentMonth,
@@ -310,6 +395,25 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       });
     }
 
+    if (!isAdmin) {
+      const closed = [...orderJournal.positions]
+        .filter((p) => p.status === 'CLOSED')
+        .reverse();
+      let cumPts = 0;
+      let cumInr = 0;
+      return closed.map((p, idx) => {
+        cumPts = Math.round((cumPts + p.pnlPoints) * 100) / 100;
+        cumInr = Math.round(cumInr + p.pnlRupees);
+        return {
+          label: `T#${idx + 1}`,
+          fullDate: `${p.date} ${p.exitTime || p.entryTime}`,
+          dayPoints: p.pnlPoints,
+          cumPoints: cumPts,
+          cumRupees: cumInr,
+        };
+      });
+    }
+
     let cumPts = 0;
     let cumInr = 0;
     return labResult.trades.map((t) => {
@@ -323,7 +427,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         cumRupees: cumInr,
       };
     });
-  }, [hasJournalData, journal.dailyMap, labResult.trades]);
+  }, [isAdmin, hasJournalData, journal.dailyMap, labResult.trades, orderJournal.positions]);
 
   const zeroOffset = useMemo(() => {
     if (equitySeries.length === 0) return 1;
@@ -362,7 +466,21 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         exitReason: e.exitReason,
         pnlPoints: e.pnlPoints,
         pnlRupees: e.pnlRupees,
-        clickableDate: e.date,
+        clickableDate: isAdmin ? e.date : (null as string | null),
+      }));
+    }
+    if (!isAdmin) {
+      return orderJournal.positions.slice(0, 6).map((p) => ({
+        id: p.id,
+        date: p.date,
+        time: p.entryTime,
+        direction: p.direction,
+        entryPrice: p.avgEntryPrice,
+        exitPrice: p.ltpOrExitPrice,
+        exitReason: p.exitReason,
+        pnlPoints: p.pnlPoints,
+        pnlRupees: p.pnlRupees,
+        clickableDate: null as string | null,
       }));
     }
     return labResult.trades.slice(0, 6).map((t) => ({
@@ -377,7 +495,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       pnlRupees: t.pnlRupees,
       clickableDate: null as string | null,
     }));
-  }, [journal.entries, labResult.trades, todayIst]);
+  }, [isAdmin, journal.entries, labResult.trades, orderJournal.positions, todayIst]);
 
   const biasText =
     labResult.finalBias === 'BULLISH'
@@ -450,22 +568,40 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </span>
             </div>
 
-            {!hasTodayRecorded && (
+            {isAdmin && !hasTodayRecorded && (
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                 Showing {labScenarioName}
+              </p>
+            )}
+            {!isAdmin && !hasTodayRecorded && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                {fyersConnected
+                  ? 'Broker connected · Awaiting today’s automated executions'
+                  : 'Connect your broker account to enable automated trading'}
               </p>
             )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => onNavigate('lab')}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors whitespace-nowrap cursor-pointer"
-            >
-              <Activity className="w-4 h-4" aria-hidden="true" />
-              <span>Strategy Lab</span>
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => onNavigate('lab')}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <Activity className="w-4 h-4" aria-hidden="true" />
+                <span>Strategy Lab</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigate('integrations')}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <Link2 className="w-4 h-4" aria-hidden="true" />
+                <span>{fyersConnected ? 'Broker Settings' : 'Connect Broker'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onNavigate('journal')}
@@ -479,49 +615,74 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
         {/* Hairline-Divided 2x2 (Mobile) / 4-Column (Desktop) Today Operational Strip */}
         <div className="grid grid-cols-2 lg:grid-cols-4 border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#0E131D]/70">
-          <div className="p-4 sm:px-6 border-r border-b lg:border-b-0 border-slate-200/80 dark:border-slate-800/80">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Today&apos;s Bias
+          {isAdmin ? (
+            <div className="p-4 sm:px-6 border-r border-b lg:border-b-0 border-slate-200/80 dark:border-slate-800/80">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Today&apos;s Bias
+              </div>
+              <div className="mt-1 flex items-center gap-1.5">
+                {labResult.finalBias === 'BULLISH' && (
+                  <TrendingUp
+                    className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                {labResult.finalBias === 'BEARISH' && (
+                  <TrendingDown
+                    className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <span
+                  className={`font-display text-base sm:text-lg font-semibold ${
+                    labResult.finalBias === 'BULLISH'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : labResult.finalBias === 'BEARISH'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {biasText}
+                </span>
+              </div>
+              <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {biasSubtext}
+              </div>
             </div>
-            <div className="mt-1 flex items-center gap-1.5">
-              {labResult.finalBias === 'BULLISH' && (
-                <TrendingUp
+          ) : (
+            <div className="p-4 sm:px-6 border-r border-b lg:border-b-0 border-slate-200/80 dark:border-slate-800/80">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Subscription
+              </div>
+              <div className="mt-1 flex items-center gap-1.5">
+                <ShieldCheck
                   className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0"
                   aria-hidden="true"
                 />
-              )}
-              {labResult.finalBias === 'BEARISH' && (
-                <TrendingDown
-                  className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0"
-                  aria-hidden="true"
-                />
-              )}
-              <span
-                className={`font-display text-base sm:text-lg font-semibold ${
-                  labResult.finalBias === 'BULLISH'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : labResult.finalBias === 'BEARISH'
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-slate-700 dark:text-slate-300'
-                }`}
-              >
-                {biasText}
-              </span>
+                <span className="font-display text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  {subscriptionSummary.label}
+                </span>
+              </div>
+              <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {subscriptionSummary.sub}
+              </div>
             </div>
-            <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {biasSubtext}
-            </div>
-          </div>
+          )}
 
           <div className="p-4 sm:px-6 lg:border-r border-b lg:border-b-0 border-slate-200/80 dark:border-slate-800/80">
             <div className="text-xs text-slate-500 dark:text-slate-400">
               Trades Executed
             </div>
             <div className="mt-1 font-mono tabular-nums text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">
-              {todaySummary.tradesCount}{' '}
-              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-                / {config.maxTradesPerDay} cap
-              </span>
+              {todaySummary.tradesCount}
+              {isAdmin && (
+                <>
+                  {' '}
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    / {config.maxTradesPerDay} cap
+                  </span>
+                </>
+              )}
             </div>
             <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
@@ -567,7 +728,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {todaySummary.ordersCount}
             </div>
             <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
-              {config.lots} lot · {config.lots * config.lotSize} qty
+              {isAdmin
+                ? `${config.lots} lot · ${config.lots * config.lotSize} qty`
+                : fyersConnected
+                ? 'Fyers Connected'
+                : 'Broker Not Connected'}
             </div>
           </div>
         </div>
@@ -701,7 +866,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     label: `Trades (${
                       hasJournalData
                         ? journal.entries.length
-                        : labResult.trades.length
+                        : isAdmin
+                        ? labResult.trades.length
+                        : orderJournal.positions.length
                     })`,
                   },
                 ] as const
@@ -726,7 +893,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <button
               type="button"
               onClick={() =>
-                onNavigate(activityTab === 'trades' ? 'calendar' : 'journal')
+                onNavigate(
+                  isAdmin && activityTab === 'trades' ? 'calendar' : 'journal'
+                )
               }
               className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
             >
@@ -740,16 +909,24 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               (displayedPositions.length === 0 ? (
                 <div className="px-5 py-10 text-center space-y-3">
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                    No positions recorded yet. Start a live feed or record a
-                    Strategy Lab session to track open and closed positions
-                    here.
+                    {isAdmin
+                      ? 'No positions recorded yet. Start a live feed or record a Strategy Lab session to track open and closed positions here.'
+                      : fyersConnected
+                      ? 'No positions recorded yet. Automated trades executed on your connected broker account will appear here.'
+                      : 'Connect your Fyers broker account to start tracking live and closed automated positions.'}
                   </p>
                   <button
                     type="button"
-                    onClick={() => onNavigate('journal')}
+                    onClick={() =>
+                      onNavigate(
+                        !isAdmin && !fyersConnected ? 'integrations' : 'journal'
+                      )
+                    }
                     className="px-4 py-2 min-h-[40px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer"
                   >
-                    Open Trades &amp; Positions
+                    {!isAdmin && !fyersConnected
+                      ? 'Connect Broker Account'
+                      : 'Open Trades & Positions'}
                   </button>
                 </div>
               ) : (
@@ -873,8 +1050,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               (displayedOrders.length === 0 ? (
                 <div className="px-5 py-10 text-center space-y-3">
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                    No executed orders yet. Entry, stop-loss, and target legs
-                    from Strategy Lab appear here automatically.
+                    {isAdmin
+                      ? 'No executed orders yet. Entry, stop-loss, and target legs from Strategy Lab appear here automatically.'
+                      : 'No executed orders yet. Entry, stop-loss, and exit fills on your account will appear here automatically.'}
                   </p>
                   <button
                     type="button"
@@ -984,16 +1162,19 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               (displayedTrades.length === 0 ? (
                 <div className="px-5 py-10 text-center space-y-3">
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                    No completed trades logged yet. Run a backtest or live
-                    session to populate your trade history.
+                    {isAdmin
+                      ? 'No completed trades logged yet. Run a backtest or live session to populate your trade history.'
+                      : 'No completed trades logged yet. Completed executions on your broker account will populate here.'}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('backtest1y')}
-                    className="px-4 py-2 min-h-[40px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Open Backtest
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('backtest1y')}
+                      className="px-4 py-2 min-h-[40px] text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Open Backtest
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -1006,7 +1187,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         onClick={() =>
                           t.clickableDate
                             ? onOpenCalendarDate(t.clickableDate)
-                            : onNavigate('lab')
+                            : onNavigate(isAdmin ? 'lab' : 'journal')
                         }
                         className="w-full px-4 py-3.5 text-left flex items-center justify-between gap-3 active:bg-slate-50 dark:active:bg-slate-800/40 cursor-pointer"
                       >
@@ -1073,7 +1254,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                             onClick={() =>
                               t.clickableDate
                                 ? onOpenCalendarDate(t.clickableDate)
-                                : onNavigate('lab')
+                                : onNavigate(isAdmin ? 'lab' : 'journal')
                             }
                             className="h-11 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                           >
@@ -1167,22 +1348,33 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </button>
             </div>
 
-            {!hasJournalData && labResult.trades.length > 0 ? (
-              <button
-                type="button"
-                onClick={onSaveLabSessionToCalendar}
-                className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
-              >
-                <BookmarkPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Save</span>
-              </button>
+            {isAdmin ? (
+              !hasJournalData && labResult.trades.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={onSaveLabSessionToCalendar}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Save</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('calendar')}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
+                >
+                  <span>Calendar</span>
+                  <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              )
             ) : (
               <button
                 type="button"
-                onClick={() => onNavigate('calendar')}
+                onClick={() => onNavigate('journal')}
                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer"
               >
-                <span>Calendar</span>
+                <span>Journal</span>
                 <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
               </button>
             )}
@@ -1391,14 +1583,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span>Tap any day to inspect trades</span>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('backtest1y')}
-                  className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
-                >
-                  Run Backtest
-                </button>
+                <span>
+                  {isAdmin
+                    ? 'Tap any day to inspect trades'
+                    : 'Daily performance overview'}
+                </span>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('backtest1y')}
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium cursor-pointer"
+                  >
+                    Run Backtest
+                  </button>
+                )}
               </div>
             </div>
           )}

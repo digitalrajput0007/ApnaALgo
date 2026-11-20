@@ -26,6 +26,7 @@ export type WorkspaceTab =
   | 'journal'
   | 'calendar'
   | 'integrations'
+  | 'users'
   | 'settings';
 
 export type TradingMode = 'PAPER' | 'LIVE';
@@ -37,6 +38,7 @@ const TAB_LABELS: Record<WorkspaceTab, string> = {
   journal: 'Trades & Positions',
   calendar: 'Paper Calendar',
   integrations: 'Integrations',
+  users: 'User Management',
   settings: 'Settings',
 };
 
@@ -111,6 +113,27 @@ export const TopBar: React.FC<TopBarProps> = ({
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [menuOpen]);
+
+  const isAdmin = user.role === 'owner';
+
+  const planBadgeText = (() => {
+    if (isAdmin) return 'Admin';
+    const labels: Record<string, string> = {
+      '1m': '1 Month Plan',
+      '3m': '3 Months Plan',
+      '6m': '6 Months Plan',
+      '1y': '1 Year Plan',
+    };
+    const label = labels[user.subscriptionPlan] || 'Active Plan';
+    if (user.subscriptionExpiresAt) {
+      const exp = new Date(user.subscriptionExpiresAt).toLocaleDateString(
+        'en-IN',
+        { day: 'numeric', month: 'short', year: 'numeric' }
+      );
+      return `${label} · Exp ${exp}`;
+    }
+    return label;
+  })();
 
   const ltpFormatted = liveTick
     ? liveTick.ltp.toLocaleString('en-IN', {
@@ -188,43 +211,50 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </span>
               </button>
 
-              <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
-                ·
-              </span>
+              {isAdmin && (
+                <>
+                  <span
+                    className="text-slate-300 dark:text-slate-700"
+                    aria-hidden="true"
+                  >
+                    ·
+                  </span>
 
-              <button
-                type="button"
-                onClick={() => onSelectTab('lab')}
-                title={
-                  isLiveStreaming
-                    ? 'Fyers 5m live feed streaming — click to open Strategy Lab'
-                    : 'Open Strategy Lab to start live feed'
-                }
-                className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isLiveStreaming
-                      ? 'bg-emerald-500 animate-pulse'
-                      : 'bg-slate-400 dark:bg-slate-600'
-                  }`}
-                  aria-hidden="true"
-                />
-                <span>Feed:</span>
-                <span
-                  className={
-                    isLiveStreaming
-                      ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                      : 'text-slate-500 dark:text-slate-400 font-medium'
-                  }
-                >
-                  {isLiveStreaming
-                    ? ltpFormatted
-                      ? `Live ${ltpFormatted}`
-                      : 'Streaming'
-                    : 'Idle'}
-                </span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectTab('lab')}
+                    title={
+                      isLiveStreaming
+                        ? 'Live feed streaming — click to open Strategy Lab'
+                        : 'Open Strategy Lab to start live feed'
+                    }
+                    className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        isLiveStreaming
+                          ? 'bg-emerald-500 animate-pulse'
+                          : 'bg-slate-400 dark:bg-slate-600'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>Feed:</span>
+                    <span
+                      className={
+                        isLiveStreaming
+                          ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                          : 'text-slate-500 dark:text-slate-400 font-medium'
+                      }
+                    >
+                      {isLiveStreaming
+                        ? ltpFormatted
+                          ? `Live ${ltpFormatted}`
+                          : 'Streaming'
+                        : 'Idle'}
+                    </span>
+                  </button>
+                </>
+              )}
 
               <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                 ·
@@ -363,6 +393,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                       {user.email}
                     </div>
+                    <div className="text-[10px] font-mono text-blue-600 dark:text-blue-400 mt-1 truncate">
+                      {planBadgeText}
+                    </div>
                   </div>
 
                   <div className="py-1">
@@ -390,18 +423,20 @@ export const TopBar: React.FC<TopBarProps> = ({
                       <Shield className="w-3.5 h-3.5 text-slate-400" />
                       <span>Password &amp; recovery</span>
                     </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onOpenSettingsSection('developer');
-                      }}
-                      className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <Code2 className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Developer &amp; Python code</span>
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onOpenSettingsSection('developer');
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 cursor-pointer"
+                      >
+                        <Code2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Developer &amp; Python code</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="pt-1 border-t border-slate-100 dark:border-slate-800">
@@ -430,7 +465,11 @@ export const TopBar: React.FC<TopBarProps> = ({
         aria-label="Broker, live feed, and Telegram connection status"
         className="lg:hidden bg-white dark:bg-[#0E131D] border-b border-slate-200/80 dark:border-slate-800/80 px-3"
       >
-        <div className="grid grid-cols-3 divide-x divide-slate-200/80 dark:divide-slate-800/80 text-[11px] font-mono tabular-nums">
+        <div
+          className={`grid ${
+            isAdmin ? 'grid-cols-3' : 'grid-cols-2'
+          } divide-x divide-slate-200/80 dark:divide-slate-800/80 text-[11px] font-mono tabular-nums`}
+        >
           <button
             type="button"
             onClick={() => onOpenIntegrationsTab('brokers')}
@@ -449,33 +488,35 @@ export const TopBar: React.FC<TopBarProps> = ({
             </span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onSelectTab('lab')}
-            className="min-h-[38px] px-1.5 flex items-center justify-center gap-1.5 text-slate-600 dark:text-slate-400 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors cursor-pointer"
-          >
-            <Radio
-              className={`w-3 h-3 shrink-0 ${
-                isLiveStreaming
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-slate-400 dark:text-slate-500'
-              }`}
-              aria-hidden="true"
-            />
-            <span
-              className={`truncate ${
-                isLiveStreaming
-                  ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                  : ''
-              }`}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => onSelectTab('lab')}
+              className="min-h-[38px] px-1.5 flex items-center justify-center gap-1.5 text-slate-600 dark:text-slate-400 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors cursor-pointer"
             >
-              {isLiveStreaming
-                ? ltpFormatted
+              <Radio
+                className={`w-3 h-3 shrink-0 ${
+                  isLiveStreaming
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}
+                aria-hidden="true"
+              />
+              <span
+                className={`truncate ${
+                  isLiveStreaming
+                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                    : ''
+                }`}
+              >
+                {isLiveStreaming
                   ? ltpFormatted
-                  : 'Feed Live'
-                : 'Feed Idle'}
-            </span>
-          </button>
+                    ? ltpFormatted
+                    : 'Feed Live'
+                  : 'Feed Idle'}
+              </span>
+            </button>
+          )}
 
           <button
             type="button"

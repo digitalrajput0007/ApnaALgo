@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   KeyRound,
   Moon,
   Send,
+  ShieldCheck,
   Sun,
 } from 'lucide-react';
 import { SaaSAuthController } from '../hooks/useSaaSAuth';
@@ -18,7 +19,7 @@ interface AuthPortalProps {
   onToggleTheme?: () => void;
 }
 
-type AuthMode = 'login' | 'register' | 'forgot';
+type AuthMode = 'login' | 'setup' | 'forgot';
 type RecoveryMethod = 'key' | 'otp';
 
 export const AuthPortal: React.FC<AuthPortalProps> = ({
@@ -26,9 +27,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
   theme = 'dark',
   onToggleTheme,
 }) => {
-  const [mode, setMode] = useState<AuthMode>(
-    auth.registeredUsers === 0 ? 'register' : 'login'
-  );
+  // Home screen always opens directly on Sign In — never trapped on registration
+  const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,11 +47,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
   } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (auth.registeredUsers === 0 && mode === 'login') {
-      setMode('register');
-    }
-  }, [auth.registeredUsers, mode]);
+  const canInitializeAdmin = auth.registeredUsers === 0;
 
   const switchMode = (next: AuthMode) => {
     setMode(next);
@@ -60,14 +56,21 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
     auth.clearError();
   };
 
-  const handlePrimarySubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
-    if (mode === 'register') {
-      await auth.register(name, email, password);
-    } else if (mode === 'login') {
-      await auth.login(email, password);
+    await auth.login(email, password);
+  };
+
+  const handleAdminSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError(null);
+    if (!canInitializeAdmin) {
+      setLocalError('Admin account is already configured. Please sign in.');
+      setMode('login');
+      return;
     }
+    await auth.register(name, email, password);
   };
 
   const handleRequestTelegramOtp = async () => {
@@ -123,7 +126,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
         <BrandLogo size="md" />
         <div className="flex items-center gap-2.5">
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            NIFTY 5m Desk
+            Trading Portal
           </span>
           {onToggleTheme && (
             <button
@@ -147,46 +150,16 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
       {/* Centered Focused Auth Card */}
       <main className="w-full max-w-[420px] mx-auto my-8">
         <div className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-2xl shadow-[0_1px_3px_rgba(15,23,42,0.04)] p-7 sm:p-8 space-y-6">
-          {mode !== 'forgot' ? (
+          {mode === 'login' && (
             <>
               <div className="space-y-1.5">
                 <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-                  {mode === 'login'
-                    ? 'Sign in to NeoAlgo'
-                    : auth.registeredUsers === 0
-                    ? 'Create workspace owner account'
-                    : 'Create your account'}
+                  Sign in to NeoAlgo
                 </h1>
                 <p className="text-[13px] text-slate-500 dark:text-slate-400">
-                  {mode === 'login'
-                    ? 'Enter your credentials to access your trading desk.'
-                    : 'Set up your private strategy, broker, and alert workspace.'}
+                  Enter your credentials provided by your administrator to access
+                  your trading dashboard.
                 </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-                    mode === 'login'
-                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  Sign in
-                </button>
-                <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  className={`py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-                    mode === 'register'
-                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  Create account
-                </button>
               </div>
 
               {displayError && (
@@ -198,26 +171,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                 </div>
               )}
 
-              <form onSubmit={handlePrimarySubmit} className="space-y-4">
-                {mode === 'register' && (
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                      Full name
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      minLength={2}
-                      maxLength={80}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Aarav Sharma"
-                      autoComplete="name"
-                      className={inputCls}
-                    />
-                  </label>
-                )}
-
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <label className="block space-y-1.5">
                   <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
                     Email
@@ -241,15 +195,13 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                     >
                       Password
                     </label>
-                    {mode === 'login' && (
-                      <button
-                        type="button"
-                        onClick={() => switchMode('forgot')}
-                        className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot')}
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
                   <div className="relative">
                     <input
@@ -259,14 +211,129 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                       minLength={6}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={
-                        mode === 'register'
-                          ? 'Minimum 6 characters'
-                          : 'Enter your password'
-                      }
-                      autoComplete={
-                        mode === 'register' ? 'new-password' : 'current-password'
-                      }
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      className={`${inputCls} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={auth.submitting}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span>{auth.submitting ? 'Signing in...' : 'Sign in'}</span>
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </form>
+
+              {canInitializeAdmin && (
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800/90 text-center">
+                  <button
+                    type="button"
+                    onClick={() => switchMode('setup')}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>First-time server setup? Initialize Admin account</span>
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {mode === 'setup' && (
+            <>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Back to sign in</span>
+                </button>
+                <h1 className="font-display text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                  Initialize Admin account
+                </h1>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
+                  One-time setup for the primary administrator. Afterwards, only
+                  the Admin can create and manage customer accounts.
+                </p>
+              </div>
+
+              {displayError && (
+                <div
+                  role="alert"
+                  className="px-3.5 py-2.5 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200/80 dark:border-red-500/30 rounded-lg"
+                >
+                  {displayError}
+                </div>
+              )}
+
+              <form onSubmit={handleAdminSetupSubmit} className="space-y-4">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Admin full name
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Admin Name"
+                    autoComplete="name"
+                    className={inputCls}
+                  />
+                </label>
+
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Admin email
+                  </span>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@domain.com"
+                    autoComplete="email"
+                    className={inputCls}
+                  />
+                </label>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="setup-password"
+                    className="text-xs font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="setup-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      autoComplete="new-password"
                       className={`${inputCls} pr-10`}
                     />
                     <button
@@ -291,16 +358,16 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                 >
                   <span>
                     {auth.submitting
-                      ? 'Please wait...'
-                      : mode === 'login'
-                      ? 'Sign in'
-                      : 'Create account'}
+                      ? 'Creating Admin...'
+                      : 'Create Admin account'}
                   </span>
                   <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               </form>
             </>
-          ) : (
+          )}
+
+          {mode === 'forgot' && (
             /* Password Recovery Flow */
             <>
               <div className="space-y-2">
@@ -316,8 +383,8 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                   Recover your password
                 </h1>
                 <p className="text-[13px] text-slate-500 dark:text-slate-400">
-                  Verify using your saved Recovery Key, or request a 6-digit
-                  reset code via Telegram or your workspace owner.
+                  Verify using your saved Recovery Key, a 6-digit Telegram code,
+                  or contact your administrator for a password reset.
                 </p>
               </div>
 
@@ -438,7 +505,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                     />
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Use the code sent to your linked Telegram DM, or a 6-digit
-                      code issued by your workspace owner.
+                      code issued by your administrator.
                     </p>
                   </div>
                 )}
@@ -494,7 +561,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
 
       {/* Quiet Footer */}
       <footer className="w-full max-w-md mx-auto text-center text-xs text-slate-400 dark:text-slate-500">
-        Encrypted self-hosted workspace · Per-user isolated broker vaults
+        Managed trading portal · Isolated per-account broker vaults
       </footer>
     </div>
   );

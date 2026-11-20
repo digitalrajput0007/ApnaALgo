@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -10,25 +9,31 @@ import {
   Copy,
   KeyRound,
   LayoutDashboard,
+  Link2,
   OctagonX,
   Pause,
   Play,
   RotateCcw,
+  Settings,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import { AdminUsersView } from './components/AdminUsersView';
 import { AuthPortal } from './components/AuthPortal';
 import { BrandLogo } from './components/BrandLogo';
 import { CsvImportModal } from './components/CsvImportModal';
 import { DashboardOverview } from './components/DashboardOverview';
 import { EquityCurveChart } from './components/EquityCurveChart';
+import { ForcePasswordChangeScreen } from './components/ForcePasswordChangeScreen';
 import { FyersLiveBar } from './components/FyersLiveBar';
 import {
   IntegrationsSubTab,
   IntegrationsView,
 } from './components/IntegrationsView';
 import { NiftyChart } from './components/NiftyChart';
+import { OptionTradeDesk } from './components/OptionTradeDesk';
 import { PaperCalendarView } from './components/PaperCalendarView';
 import { SettingsSection, SettingsView } from './components/SettingsView';
 import { StrategyControls } from './components/StrategyControls';
@@ -38,6 +43,10 @@ import { TradesPositionsJournalView } from './components/TradesPositionsJournalV
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { YearlyBacktestView } from './components/YearlyBacktestView';
 import { formatINR } from './utils/formatters';
+import {
+  getFallbackInstrumentMeta,
+  InstrumentMeta,
+} from './utils/optionsEngine';
 import { generatePythonNeoAlgo } from './engine/codeGenerator';
 import {
   DEFAULT_STRATEGY_CONFIG,
@@ -123,6 +132,7 @@ function loadSavedStrategyConfig(userId?: string | null): StrategyConfig {
 export default function App() {
   const auth = useSaaSAuth();
   const userId = auth.user?.id ?? null;
+  const isAdmin = auth.isAdmin;
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
   const [labMode, setLabMode] = useState<'analysis' | 'replay'>('analysis');
@@ -352,13 +362,32 @@ export default function App() {
     }
   };
 
+  const ADMIN_ONLY_TABS: WorkspaceTab[] = [
+    'lab',
+    'backtest1y',
+    'calendar',
+    'users',
+  ];
+
+  // Ensure non-admin customers can never remain on an Admin-only tab
+  useEffect(() => {
+    if (auth.user && !isAdmin && ADMIN_ONLY_TABS.includes(activeTab)) {
+      setActiveTab('dashboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user, isAdmin, activeTab]);
+
   const handleSelectTab = (tab: WorkspaceTab) => {
+    if (!isAdmin && ADMIN_ONLY_TABS.includes(tab)) {
+      setActiveTab('dashboard');
+      return;
+    }
     setActiveTab(tab);
     setIsPlaying(false);
   };
 
   const handleOpenSettingsSection = (sec: SettingsSection) => {
-    setSettingsSection(sec);
+    setSettingsSection(!isAdmin && sec === 'developer' ? 'profile' : sec);
     setActiveTab('settings');
     setIsPlaying(false);
   };
@@ -373,6 +402,10 @@ export default function App() {
     month?: string | null,
     date?: string | null
   ) => {
+    if (!isAdmin) {
+      setActiveTab('journal');
+      return;
+    }
     setCalendarFocusMonth(month ?? (date ? date.slice(0, 7) : null));
     setCalendarFocusDate(date ?? null);
     setActiveTab('calendar');
@@ -706,6 +739,81 @@ export default function App() {
     (fyersFeed.status?.authenticated ? 1 : 0) +
     (telegramAlerts.isArmedForLive ? 1 : 0);
 
+  // Automatic F&O Futures Lot Size & Option Strike Step resolver for the active Strategy Lab symbol
+  const activeLabSymbol =
+    selectedScenarioId === 'fyers_live'
+      ? fyersFeed.activeSymbol
+      : 'NSE:NIFTY50-INDEX';
+  const [labInstrumentMeta, setLabInstrumentMeta] = useState<InstrumentMeta>(
+    () => getFallbackInstrumentMeta(activeLabSymbol)
+  );
+  const [loadingLabLotSize, setLoadingLabLotSize] = useState(false);
+  const lastAutoLotSymbolRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const fallback = getFallbackInstrumentMeta(activeLabSymbol);
+    setLabInstrumentMeta(fallback);
+
+    const applyLotSizeIfSymbolChanged = (meta: InstrumentMeta, notify: boolean) => {
+      if (lastAutoLotSymbolRef.current !== meta.normalizedSymbol) {
+        const hadPrevious = lastAutoLotSymbolRef.current !== null;
+        lastAutoLotSymbolRef.current = meta.normalizedSymbol;
+        setConfig((prev) =>
+          prev.lotSize === meta.lotSize
+            ? prev
+            : { ...prev, lotSize: meta.lotSize }
+        );
+        if (hadPrevious && notify && meta.fnoEnabled) {
+          toast.info(
+            `${meta.displayName} lot size auto-set to ${meta.lotSize}${
+              meta.nearFuturesSymbol ? ` (${meta.nearFuturesSymbol})` : ''
+            }`
+          );
+        }
+      } else {
+        // Same symbol: update if live Fyers master returned a different lot size than static fallback
+        setConfig((prev) =>
+          prev.lotSize === fallback.lotSize && meta.lotSize !== fallback.lotSize
+            ? { ...prev, lotSize: meta.lotSize }
+            : prev
+        );
+      }
+    };
+
+    if (!userId) {
+      applyLotSizeIfSymbolChanged(fallback, false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingLabLotSize(true);
+    (async () => {
+      try {
+        const params = new URLSearchParams({ symbol: activeLabSymbol });
+        const resp = await fetch(
+          `/api/fyers/instrument-meta?${params.toString()}`,
+          { credentials: 'include', cache: 'no-store' }
+        );
+        if (!resp.ok || cancelled) {
+          if (!cancelled) applyLotSizeIfSymbolChanged(fallback, false);
+          return;
+        }
+        const meta = (await resp.json()) as InstrumentMeta;
+        if (cancelled) return;
+        setLabInstrumentMeta(meta);
+        applyLotSizeIfSymbolChanged(meta, true);
+      } catch {
+        if (!cancelled) applyLotSizeIfSymbolChanged(fallback, false);
+      } finally {
+        if (!cancelled) setLoadingLabLotSize(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLabSymbol, userId]);
+
   const handleSignOut = async () => {
     fyersFeed.stopStream();
     await auth.logout();
@@ -911,6 +1019,20 @@ export default function App() {
     );
   }
 
+  // Mandatory First-Login / Post-Reset Password Change Gate
+  if (auth.user.mustChangePassword) {
+    return (
+      <>
+        <Toaster position="bottom-right" theme={theme} richColors />
+        <ForcePasswordChangeScreen
+          auth={auth}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+        />
+      </>
+    );
+  }
+
   const openPositionsCount = orderJournal.positions.filter(
     (p) => p.status === 'OPEN'
   ).length;
@@ -920,6 +1042,7 @@ export default function App() {
       <Toaster position="bottom-right" theme={theme} richColors />
 
       <WorkspaceSidebar
+        isAdmin={isAdmin}
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
         fyersFeed={fyersFeed}
@@ -1017,6 +1140,9 @@ export default function App() {
 
           {activeTab === 'dashboard' && (
             <DashboardOverview
+              isAdmin={isAdmin}
+              user={auth.user}
+              fyersConnected={Boolean(fyersFeed.status?.authenticated)}
               theme={theme}
               config={config}
               labResult={result}
@@ -1035,7 +1161,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'lab' && (
+          {isAdmin && activeTab === 'lab' && (
             <>
               {/* Unified Strategy Lab & Replay Header */}
               <header className="flex flex-wrap items-end justify-between gap-4">
@@ -1332,6 +1458,23 @@ export default function App() {
                     />
                   </ChartErrorBoundary>
 
+                  <OptionTradeDesk
+                    symbol={activeLabSymbol}
+                    spotPrice={
+                      (selectedScenarioId === 'fyers_live' &&
+                        fyersFeed.latestQuote?.ltp) ||
+                      lastCandle?.close ||
+                      24500
+                    }
+                    result={result}
+                    config={config}
+                    instrumentMeta={labInstrumentMeta}
+                    fyersAuthenticated={Boolean(
+                      fyersFeed.status?.authenticated
+                    )}
+                    onChangeConfig={setConfig}
+                  />
+
                   <EquityCurveChart
                     result={result}
                     config={config}
@@ -1363,12 +1506,14 @@ export default function App() {
                   justSaved={justSavedConfig}
                   onSave={handleSaveConfig}
                   onDiscard={handleDiscardConfig}
+                  instrumentMeta={labInstrumentMeta}
+                  loadingLotSize={loadingLabLotSize}
                 />
               </section>
             </>
           )}
 
-          {activeTab === 'backtest1y' && (
+          {isAdmin && activeTab === 'backtest1y' && (
             <YearlyBacktestView
               theme={theme}
               config={config}
@@ -1413,6 +1558,7 @@ export default function App() {
 
           {activeTab === 'journal' && (
             <TradesPositionsJournalView
+              isAdmin={isAdmin}
               journal={orderJournal}
               config={config}
               currentLabTradesCount={result.trades.length}
@@ -1423,7 +1569,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'calendar' && (
+          {isAdmin && activeTab === 'calendar' && (
             <PaperCalendarView
               journal={paperJournal}
               config={config}
@@ -1443,9 +1589,11 @@ export default function App() {
               telegram={telegramAlerts}
               strategyConfig={config}
               initialSubTab={integrationsSubTab}
-              onGoToLab={() => handleSelectTab('lab')}
+              onGoToLab={() => handleSelectTab(isAdmin ? 'lab' : 'dashboard')}
             />
           )}
+
+          {isAdmin && activeTab === 'users' && <AdminUsersView />}
 
           {activeTab === 'settings' && (
             <SettingsView
@@ -1463,13 +1611,19 @@ export default function App() {
           aria-label="Mobile quick navigation"
           className="lg:hidden fixed bottom-0 left-0 right-0 z-30 h-14 bg-white/95 dark:bg-[#0E131D]/95 backdrop-blur-md border-t border-slate-200/90 dark:border-slate-800/90 grid grid-cols-4 items-center"
         >
-          {(
-            [
-              { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-              { id: 'lab', label: 'Lab', icon: Activity },
-              { id: 'journal', label: 'Positions', icon: ClipboardList },
-              { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-            ] as const
+          {(isAdmin
+            ? ([
+                { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+                { id: 'lab', label: 'Lab', icon: Activity },
+                { id: 'journal', label: 'Positions', icon: ClipboardList },
+                { id: 'users', label: 'Users', icon: Users },
+              ] as const)
+            : ([
+                { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+                { id: 'journal', label: 'Positions', icon: ClipboardList },
+                { id: 'integrations', label: 'Broker', icon: Link2 },
+                { id: 'settings', label: 'Settings', icon: Settings },
+              ] as const)
           ).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -1530,16 +1684,19 @@ export default function App() {
                 </strong>{' '}
                 to{' '}
                 <strong className="text-red-600 dark:text-red-400">LIVE</strong>
-                . Make sure your broker feed, stop loss ({config.stopLossPoints}{' '}
-                pts), target ({config.targetPoints} pts), and max daily trade cap
-                ({config.maxTradesPerDay}/day) are verified.
+                .{' '}
+                {isAdmin
+                  ? `Make sure your broker feed, stop loss (${config.stopLossPoints} pts), target (${config.targetPoints} pts), and max daily trade cap (${config.maxTradesPerDay}/day) are verified.`
+                  : 'Make sure your connected broker account and available margin are verified before live execution.'}
               </p>
               <div className="px-3 py-2.5 rounded-lg bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 font-mono tabular-nums text-[11px] text-slate-700 dark:text-slate-300">
                 Broker:{' '}
                 {fyersFeed.status?.authenticated
                   ? 'Fyers Connected'
-                  : 'Not Connected'}{' '}
-                · Lot Size: {config.lots} × {config.lotSize} qty
+                  : 'Not Connected'}
+                {isAdmin
+                  ? ` · Lot Size: ${config.lots} × ${config.lotSize} qty`
+                  : ''}
               </div>
             </div>
 

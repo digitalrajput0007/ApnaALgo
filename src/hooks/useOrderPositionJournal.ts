@@ -8,6 +8,7 @@ import {
   TradeRecord,
 } from '../types/strategy';
 import { getTodayIstYYYYMMDD } from './usePaperTradeJournal';
+import { computeOptionRecommendation } from '../utils/optionsEngine';
 
 const STORAGE_KEY_BASE = 'neoalgo_order_position_journal_v1';
 
@@ -73,8 +74,23 @@ export function buildOrdersAndPositionsFromSession(
         ? t.date
         : opts.fallbackDate || getTodayIstYYYYMMDD();
 
+    const isOptionMode = opts.config.instrumentType === 'NIFTY_ATM_OPT';
+    const optionRec = isOptionMode
+      ? computeOptionRecommendation({
+          symbol: opts.symbol,
+          spotPrice: t.entryPrice,
+          direction: t.direction,
+          targetDelta: opts.config.optionDeltaEstimate,
+          slPoints: opts.config.stopLossPoints,
+          targetPoints: opts.config.targetPoints,
+          lotSize: opts.config.lotSize,
+          lots: opts.config.lots,
+        })
+      : null;
+    const tradeSymbol = optionRec ? optionRec.contractLabel : opts.symbol;
+
     // Deterministic key ties each order & position to its Strategy Lab trade
-    const tradeKey = `${tradeDate}|${opts.symbol}|${t.direction}|${t.entryTime}|${t.entryPrice.toFixed(
+    const tradeKey = `${tradeDate}|${tradeSymbol}|${t.direction}|${t.entryTime}|${t.entryPrice.toFixed(
       2
     )}|${t.biasSetNumber}`;
 
@@ -98,7 +114,7 @@ export function buildOrdersAndPositionsFromSession(
       tradeKey,
       tradeNumber: t.id,
       date: tradeDate,
-      symbol: opts.symbol,
+      symbol: tradeSymbol,
       direction: t.direction,
       qty,
       lots: opts.config.lots,
@@ -124,8 +140,17 @@ export function buildOrdersAndPositionsFromSession(
       configSummary,
     });
 
-    const entrySide: 'BUY' | 'SELL' = t.direction === 'LONG' ? 'BUY' : 'SELL';
-    const exitSide: 'BUY' | 'SELL' = t.direction === 'LONG' ? 'SELL' : 'BUY';
+    // In Options Buying mode, both CE (LONG) and PE (SHORT) are BOUGHT on entry and SOLD on exit
+    const entrySide: 'BUY' | 'SELL' = isOptionMode
+      ? 'BUY'
+      : t.direction === 'LONG'
+      ? 'BUY'
+      : 'SELL';
+    const exitSide: 'BUY' | 'SELL' = isOptionMode
+      ? 'SELL'
+      : t.direction === 'LONG'
+      ? 'SELL'
+      : 'BUY';
     const rsiRule =
       t.direction === 'LONG'
         ? `RSI(${opts.config.rsiLength}) < ${opts.config.rsiBuyThreshold} (${t.signalRsi.toFixed(
@@ -142,15 +167,15 @@ export function buildOrdersAndPositionsFromSession(
       tradeNumber: t.id,
       date: tradeDate,
       time: t.entryTime,
-      symbol: opts.symbol,
+      symbol: tradeSymbol,
       side: entrySide,
       leg: 'ENTRY',
       orderType: 'SL-M BREAKOUT',
       qty,
       price: t.entryPrice,
-      triggerCondition: `Set #${t.biasSetNumber} · ${rsiRule} · Breakout ${t.triggerLevel.toFixed(
-        2
-      )}`,
+      triggerCondition: `${
+        optionRec ? `${optionRec.moneynessLabel} (~${optionRec.effectiveDelta.toFixed(2)}Δ) · ` : ''
+      }Set #${t.biasSetNumber} · ${rsiRule} · Spot ${t.triggerLevel.toFixed(2)}`,
       status: 'EXECUTED',
       source: opts.source,
       sessionLabel: opts.sessionLabel,
@@ -166,7 +191,7 @@ export function buildOrdersAndPositionsFromSession(
         tradeNumber: t.id,
         date: tradeDate,
         time: t.trailTime,
-        symbol: opts.symbol,
+        symbol: tradeSymbol,
         side: exitSide,
         leg: 'SL_MODIFY',
         orderType: 'SL MODIFY',
@@ -191,7 +216,7 @@ export function buildOrdersAndPositionsFromSession(
         tradeNumber: t.id,
         date: tradeDate,
         time: t.trailTime || t.entryTime,
-        symbol: opts.symbol,
+        symbol: tradeSymbol,
         side: exitSide,
         leg: 'RESTING_SL',
         orderType: 'SL-M',
@@ -213,7 +238,7 @@ export function buildOrdersAndPositionsFromSession(
         tradeNumber: t.id,
         date: tradeDate,
         time: t.entryTime,
-        symbol: opts.symbol,
+        symbol: tradeSymbol,
         side: exitSide,
         leg: 'RESTING_TARGET',
         orderType: 'LIMIT TARGET',
@@ -257,7 +282,7 @@ export function buildOrdersAndPositionsFromSession(
         tradeNumber: t.id,
         date: tradeDate,
         time: t.exitTime || t.entryTime,
-        symbol: opts.symbol,
+        symbol: tradeSymbol,
         side: exitSide,
         leg: meta.leg,
         orderType: meta.orderType,

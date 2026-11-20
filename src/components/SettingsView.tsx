@@ -71,12 +71,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onGoToIntegrations,
 }) => {
   const user = auth.user!;
-  const [section, setSection] = useState<SettingsSection>(initialSection);
+  const isAdmin = user.role === 'owner';
+  const safeInitial: SettingsSection =
+    !isAdmin && initialSection === 'developer' ? 'profile' : initialSection;
+  const [section, setSection] = useState<SettingsSection>(safeInitial);
   const [devSubTab, setDevSubTab] = useState<'code' | 'guide'>('code');
 
   useEffect(() => {
-    setSection(initialSection);
-  }, [initialSection]);
+    setSection(
+      !isAdmin && initialSection === 'developer' ? 'profile' : initialSection
+    );
+  }, [initialSection, isAdmin]);
 
   // Profile form state
   const [name, setName] = useState(user.name);
@@ -285,11 +290,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     id: SettingsSection;
     label: string;
     icon: React.FC<{ className?: string }>;
-  }[] = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'security', label: 'Password & Recovery', icon: Shield },
-    { id: 'developer', label: 'Developer Export', icon: Code2 },
-  ];
+  }[] = isAdmin
+    ? [
+        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'security', label: 'Password & Recovery', icon: Shield },
+        { id: 'developer', label: 'Developer Export', icon: Code2 },
+      ]
+    : [
+        { id: 'profile', label: 'Profile', icon: User },
+        { id: 'security', label: 'Password & Recovery', icon: Shield },
+      ];
 
   const inputCls =
     'w-full px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 placeholder:text-slate-400 dark:placeholder:text-slate-500';
@@ -302,8 +312,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Settings
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Manage your profile, account security, password recovery, and Python
-            exports.
+            {isAdmin
+              ? 'Manage your profile, account security, password recovery, and Python exports.'
+              : 'Manage your profile, account security, and password recovery.'}
           </p>
         </div>
 
@@ -438,7 +449,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 maxLength={140}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="e.g. NIFTY 5m Intraday Momentum & Index Options"
+                placeholder="e.g. NSE Index Futures & Options"
                 className={inputCls}
               />
             </label>
@@ -446,8 +457,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 Role:{' '}
-                <span className="font-medium text-slate-800 dark:text-slate-200 capitalize">
-                  {user.role}
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  {isAdmin ? 'Admin' : 'Customer'}
                 </span>{' '}
                 · Member since{' '}
                 <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
@@ -741,8 +752,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* SECTION 3: DEVELOPER EXPORT (Python Code + Modification Guide) */}
-      {section === 'developer' && (
+      {/* SECTION 3: DEVELOPER EXPORT (Admin Only) */}
+      {isAdmin && section === 'developer' && (
         <div className="space-y-5">
           <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-[#161D2B] rounded-lg">
             <button

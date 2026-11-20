@@ -161,14 +161,16 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             {isFyersConnected ? (
               <>
-                <button
-                  type="button"
-                  onClick={onGoToLab}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-                >
-                  <span>Open Strategy Lab</span>
-                  <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
+                {user.role === 'owner' && (
+                  <button
+                    type="button"
+                    onClick={onGoToLab}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <span>Open Strategy Lab</span>
+                    <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleConnectFyers}
@@ -203,8 +205,10 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
         <div className="px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7 space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              {fyersBroker?.description ||
-                'Connect your Fyers trading account via OAuth 2.0 for 1-year 5-minute NIFTY history, real-time 1-second candle streaming, and automated journal sync.'}
+              {user.role === 'owner'
+                ? fyersBroker?.description ||
+                  'Connect your Fyers trading account via OAuth 2.0 for historical market data, real-time quotes, and automated journal sync.'
+                : 'Connect your Fyers trading account securely via OAuth 2.0 to enable automated order execution and real-time position tracking.'}
             </p>
 
             {fyersFeed.errorMsg && (
@@ -362,7 +366,7 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
                   <span>{broker.authType}</span>
                   <span>
-                    {broker.capabilities.historicalCandles ? '5m History' : ''}
+                    {broker.capabilities.historicalCandles ? 'Market History' : ''}
                     {broker.capabilities.liveQuotes ? ' · Live Feed' : ''}
                     {broker.capabilities.orderExecution ? ' · Orders' : ''}
                   </span>
