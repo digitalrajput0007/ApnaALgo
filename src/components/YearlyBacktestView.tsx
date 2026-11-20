@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Bookmark,
@@ -10,6 +10,7 @@ import {
   Link2,
   Play,
   Trash2,
+  Wallet,
 } from 'lucide-react';
 import {
   Area,
@@ -36,12 +37,14 @@ import {
   StrategyConfig,
   TradeRecord,
 } from '../types/strategy';
+import { BacktestCapitalAnalytics } from './BacktestCapitalAnalytics';
 import { StrategyControls } from './StrategyControls';
 import { StrategyOptimizerPanel } from './StrategyOptimizerPanel';
 import {
   FYERS_INDEX_PRESETS,
   normalizeFyersSymbol,
 } from '../utils/fyersSymbols';
+import { formatINR } from '../utils/formatters';
 import {
   getFallbackInstrumentMeta,
   InstrumentMeta,
@@ -82,6 +85,7 @@ interface YearlyBacktestViewProps {
   lotCalculation?: RiskBasedLotCalculation | null;
   autoSizeLotsEnabled?: boolean;
   onOpenPaperWallet?: () => void;
+  defaultStartingCapital?: number;
 }
 
 type DayFilter = 'all' | 'win' | 'loss' | 'notrade';
@@ -136,6 +140,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   lotCalculation = null,
   autoSizeLotsEnabled = false,
   onOpenPaperWallet,
+  defaultStartingCapital = 100000,
 }) => {
   const isDark = theme === 'dark';
   const chartGridStroke = isDark ? '#1E293B' : '#e2e8f0';
@@ -162,6 +167,32 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   const [unit, setUnit] = useState<'points' | 'rupees'>('points');
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [autoOptimizeToken, setAutoOptimizeToken] = useState(0);
+  const manualCapitalEditRef = useRef(false);
+  const [startingCapitalInput, setStartingCapitalInput] = useState<string>(() =>
+    String(Math.max(1000, Math.round(defaultStartingCapital || 100000)))
+  );
+
+  useEffect(() => {
+    if (!manualCapitalEditRef.current) {
+      setStartingCapitalInput(
+        String(Math.max(1000, Math.round(defaultStartingCapital || 100000)))
+      );
+    }
+  }, [defaultStartingCapital]);
+
+  const handleStartingCapitalInputChange = (val: string) => {
+    manualCapitalEditRef.current = true;
+    const cleaned = val.replace(/[^\d.]/g, '');
+    setStartingCapitalInput(cleaned);
+  };
+
+  const startingCapital = useMemo(() => {
+    const parsed = Number(startingCapitalInput.replace(/,/g, '').trim());
+    if (Number.isFinite(parsed) && parsed >= 1000) {
+      return Math.round(parsed);
+    }
+    return Math.max(1000, Math.round(defaultStartingCapital || 100000));
+  }, [startingCapitalInput, defaultStartingCapital]);
 
   const scopedReportsKey = userId
     ? `${SAVED_REPORTS_KEY}_${userId}`
@@ -450,10 +481,40 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
 
   const handleExportCsv = () => {
     if (!backtest || !fetchedRange) return;
+    const endingCapital = startingCapital + backtest.netRupees;
+    const totalRoiPct =
+      startingCapital > 0 ? (backtest.netRupees / startingCapital) * 100 : 0;
+    let runningCap = startingCapital;
+    const tradeRowsWithCap = backtest.allTrades.map((t) => {
+      runningCap += t.pnlRupees;
+      return [
+        String(t.id),
+        t.date || '',
+        t.direction,
+        String(t.biasSetNumber),
+        t.signalTime,
+        t.signalRsi.toFixed(2),
+        t.rawTriggerLevel.toFixed(2),
+        t.triggerLevel.toFixed(2),
+        t.entryTime,
+        t.entryPrice.toFixed(2),
+        t.exitTime || '',
+        t.exitPrice !== undefined ? t.exitPrice.toFixed(2) : '',
+        t.exitReason,
+        t.trailedToCost ? 'YES' : 'NO',
+        t.pnlPoints.toFixed(2),
+        t.pnlRupees.toFixed(2),
+        runningCap.toFixed(2),
+      ];
+    });
+
     const summaryRows = [
       ['NeoAlgo Backtest Report'],
       ['Symbol', fetchedRange.symbol],
       ['Period', `${fetchedRange.fromDate} to ${fetchedRange.toDate}`],
+      ['Starting Capital (INR)', startingCapital.toFixed(2)],
+      ['Ending Capital (INR)', endingCapital.toFixed(2)],
+      ['Total ROI (%)', totalRoiPct.toFixed(2)],
       ['Trading Days', String(backtest.totalDays)],
       ['Winning Days', String(backtest.winningDays)],
       ['Losing Days', String(backtest.losingDays)],
@@ -495,25 +556,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         'Trailed To Cost',
         'P&L Points',
         'P&L INR',
+        'Capital After Trade (INR)',
       ],
-      ...backtest.allTrades.map((t) => [
-        String(t.id),
-        t.date || '',
-        t.direction,
-        String(t.biasSetNumber),
-        t.signalTime,
-        t.signalRsi.toFixed(2),
-        t.rawTriggerLevel.toFixed(2),
-        t.triggerLevel.toFixed(2),
-        t.entryTime,
-        t.entryPrice.toFixed(2),
-        t.exitTime || '',
-        t.exitPrice !== undefined ? t.exitPrice.toFixed(2) : '',
-        t.exitReason,
-        t.trailedToCost ? 'YES' : 'NO',
-        t.pnlPoints.toFixed(2),
-        t.pnlRupees.toFixed(2),
-      ]),
+      ...tradeRowsWithCap,
     ];
 
     const csvContent = summaryRows
@@ -533,12 +578,21 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
 
   const handleExportJson = () => {
     if (!backtest || !fetchedRange) return;
+    const endingCapital = startingCapital + backtest.netRupees;
+    const totalRoiPct =
+      startingCapital > 0 ? (backtest.netRupees / startingCapital) * 100 : 0;
     const payload = {
       symbol: fetchedRange.symbol,
       fromDate: fetchedRange.fromDate,
       toDate: fetchedRange.toDate,
       exportedAt: new Date().toISOString(),
       config,
+      capital: {
+        startingCapital,
+        endingCapital,
+        netGainRupees: backtest.netRupees,
+        totalRoiPct,
+      },
       summary: {
         totalDays: backtest.totalDays,
         winningDays: backtest.winningDays,
@@ -706,6 +760,26 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                   setActivePresetDays(null);
                 }}
                 className="px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </label>
+
+            <label
+              className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400"
+              title="Starting capital used to calculate Trade-wise, Day-wise, and Month-wise capital gain/loss"
+            >
+              <Wallet
+                className="w-3.5 h-3.5 text-blue-500 shrink-0"
+                aria-hidden="true"
+              />
+              <span className="whitespace-nowrap">Capital ₹</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={startingCapitalInput}
+                onChange={(e) => handleStartingCapitalInputChange(e.target.value)}
+                aria-label="Backtest Starting Capital in INR"
+                placeholder="100000"
+                className="w-28 px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
 
@@ -950,10 +1024,21 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                     </span>
                   </div>
                   <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
-                    {backtest.netRupees >= 0 ? '+₹' : '-₹'}
-                    {Math.abs(backtest.netRupees).toLocaleString('en-IN', {
-                      maximumFractionDigits: 0,
-                    })}
+                    {formatINR(backtest.netRupees, { signed: true })} · ROI{' '}
+                    <span
+                      className={
+                        backtest.netRupees >= 0
+                          ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                          : 'text-red-600 dark:text-red-400 font-semibold'
+                      }
+                    >
+                      {startingCapital > 0
+                        ? `${backtest.netRupees >= 0 ? '+' : ''}${(
+                            (backtest.netRupees / startingCapital) *
+                            100
+                          ).toFixed(1)}%`
+                        : '0.0%'}
+                    </span>
                   </div>
                 </div>
 
@@ -997,6 +1082,19 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Capital Growth & Trade / Day / Month Gain-Loss Analytics */}
+              <BacktestCapitalAnalytics
+                backtest={backtest}
+                config={config}
+                symbol={fetchedRange?.symbol || activeSymbol}
+                fromDate={fetchedRange?.fromDate || fromDate}
+                toDate={fetchedRange?.toDate || toDate}
+                startingCapital={startingCapital}
+                startingCapitalInput={startingCapitalInput}
+                onStartingCapitalInputChange={handleStartingCapitalInputChange}
+                theme={theme}
+              />
 
               {/* Detailed Period Analysis Grid */}
               <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">

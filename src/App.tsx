@@ -1900,6 +1900,7 @@ export default function App() {
               onRemoveAttachedStrategy={handleRemoveAttachedStrategy}
               lotCalculation={lotCalculation}
               autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
+              defaultStartingCapital={paperWalletCtrl.wallet.startingCapital}
               onOpenPaperWallet={() => handleSelectTab('wallet')}
               onSaveBacktestToCalendar={(trades, meta) => {
                 const entries = tradeRecordsToPaperEntries(trades, {
