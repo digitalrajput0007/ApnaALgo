@@ -1901,6 +1901,7 @@ export default function App() {
               lotCalculation={lotCalculation}
               autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
               defaultStartingCapital={paperWalletCtrl.wallet.startingCapital}
+              defaultRiskPerTradePct={paperWalletCtrl.wallet.riskPerTradePct}
               onOpenPaperWallet={() => handleSelectTab('wallet')}
               onSaveBacktestToCalendar={(trades, meta) => {
                 const entries = tradeRecordsToPaperEntries(trades, {

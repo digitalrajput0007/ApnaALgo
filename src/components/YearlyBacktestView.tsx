@@ -50,6 +50,11 @@ import {
   InstrumentMeta,
   RiskBasedLotCalculation,
 } from '../utils/optionsEngine';
+import {
+  DEFAULT_TRADER_JOURNEY_SETTINGS,
+  simulateTraderCapitalJourney,
+  TraderJourneySettings,
+} from '../utils/tradingCosts';
 
 interface YearlyBacktestViewProps {
   config: StrategyConfig;
@@ -86,6 +91,7 @@ interface YearlyBacktestViewProps {
   autoSizeLotsEnabled?: boolean;
   onOpenPaperWallet?: () => void;
   defaultStartingCapital?: number;
+  defaultRiskPerTradePct?: number;
 }
 
 type DayFilter = 'all' | 'win' | 'loss' | 'notrade';
@@ -141,6 +147,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   autoSizeLotsEnabled = false,
   onOpenPaperWallet,
   defaultStartingCapital = 100000,
+  defaultRiskPerTradePct = 2,
 }) => {
   const isDark = theme === 'dark';
   const chartGridStroke = isDark ? '#1E293B' : '#e2e8f0';
@@ -168,9 +175,16 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [autoOptimizeToken, setAutoOptimizeToken] = useState(0);
   const manualCapitalEditRef = useRef(false);
+  const manualRiskEditRef = useRef(false);
   const [startingCapitalInput, setStartingCapitalInput] = useState<string>(() =>
     String(Math.max(1000, Math.round(defaultStartingCapital || 100000)))
   );
+  const [journeyPrefs, setJourneyPrefs] = useState<
+    Omit<TraderJourneySettings, 'startingCapital'>
+  >(() => ({
+    ...DEFAULT_TRADER_JOURNEY_SETTINGS,
+    riskPerTradePct: Math.max(0.5, Math.min(10, defaultRiskPerTradePct || 2)),
+  }));
 
   useEffect(() => {
     if (!manualCapitalEditRef.current) {
@@ -179,6 +193,18 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       );
     }
   }, [defaultStartingCapital]);
+
+  useEffect(() => {
+    if (!manualRiskEditRef.current) {
+      setJourneyPrefs((prev) => ({
+        ...prev,
+        riskPerTradePct: Math.max(
+          0.5,
+          Math.min(10, defaultRiskPerTradePct || 2)
+        ),
+      }));
+    }
+  }, [defaultRiskPerTradePct]);
 
   const handleStartingCapitalInputChange = (val: string) => {
     manualCapitalEditRef.current = true;
@@ -193,6 +219,22 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     }
     return Math.max(1000, Math.round(defaultStartingCapital || 100000));
   }, [startingCapitalInput, defaultStartingCapital]);
+
+  const journeySettings = useMemo<TraderJourneySettings>(
+    () => ({
+      startingCapital,
+      ...journeyPrefs,
+    }),
+    [startingCapital, journeyPrefs]
+  );
+
+  const handleChangeJourneySettings = (next: TraderJourneySettings) => {
+    if (next.riskPerTradePct !== journeyPrefs.riskPerTradePct) {
+      manualRiskEditRef.current = true;
+    }
+    const { startingCapital: _sc, ...rest } = next;
+    setJourneyPrefs(rest);
+  };
 
   const scopedReportsKey = userId
     ? `${SAVED_REPORTS_KEY}_${userId}`
@@ -361,6 +403,11 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     return runMultiDayBacktest(fetchedRange.candles, config);
   }, [fetchedRange, config]);
 
+  const traderJourney = useMemo(() => {
+    if (!backtest) return null;
+    return simulateTraderCapitalJourney(backtest, config, journeySettings);
+  }, [backtest, config, journeySettings]);
+
   const filteredDays = useMemo(() => {
     if (!backtest) return [];
     const list = [...backtest.dailySummaries].reverse();
@@ -480,13 +527,10 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   };
 
   const handleExportCsv = () => {
-    if (!backtest || !fetchedRange) return;
-    const endingCapital = startingCapital + backtest.netRupees;
-    const totalRoiPct =
-      startingCapital > 0 ? (backtest.netRupees / startingCapital) * 100 : 0;
-    let runningCap = startingCapital;
-    const tradeRowsWithCap = backtest.allTrades.map((t) => {
-      runningCap += t.pnlRupees;
+    if (!backtest || !fetchedRange || !traderJourney) return;
+    const { summary: js, costs: jc, tradeSeries } = traderJourney;
+    const tradeRowsWithCap = backtest.allTrades.map((t, idx) => {
+      const jt = tradeSeries[idx];
       return [
         String(t.id),
         t.date || '',
@@ -502,23 +546,46 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         t.exitPrice !== undefined ? t.exitPrice.toFixed(2) : '',
         t.exitReason,
         t.trailedToCost ? 'YES' : 'NO',
+        String(jt ? jt.lotsTraded : config.lots),
         t.pnlPoints.toFixed(2),
-        t.pnlRupees.toFixed(2),
-        runningCap.toFixed(2),
+        (jt ? jt.grossGainRupees : t.pnlRupees).toFixed(2),
+        (jt && journeySettings.includeCosts ? jt.chargesRupees : 0).toFixed(2),
+        (jt && journeySettings.includeCosts ? jt.slippageRupees : 0).toFixed(2),
+        (jt ? jt.gainRupees : t.pnlRupees).toFixed(2),
+        (jt ? jt.capitalAfter : startingCapital).toFixed(2),
       ];
     });
 
     const summaryRows = [
-      ['NeoAlgo Backtest Report'],
+      ['NeoAlgo Real-Life Backtest Report'],
       ['Symbol', fetchedRange.symbol],
       ['Period', `${fetchedRange.fromDate} to ${fetchedRange.toDate}`],
-      ['Starting Capital (INR)', startingCapital.toFixed(2)],
-      ['Ending Capital (INR)', endingCapital.toFixed(2)],
-      ['Total ROI (%)', totalRoiPct.toFixed(2)],
+      [
+        'Position Sizing Mode',
+        journeySettings.sizingMode === 'compounding_risk'
+          ? `Compounding (${journeySettings.riskPerTradePct}% risk/trade, max ${journeySettings.maxLotsCap} lots)`
+          : `Fixed ${config.lots} lot(s)`,
+      ],
+      ['Starting Capital (INR)', js.startingCapital.toFixed(2)],
+      ['Gross Ending Capital (INR)', js.grossEndingCapital.toFixed(2)],
+      ['Net Ending Capital After Costs (INR)', js.netEndingCapital.toFixed(2)],
+      ['Net Take-Home Gain (INR)', js.netGain.toFixed(2)],
+      ['Net ROI (%)', js.netRoiPct.toFixed(2)],
+      ['Costs & Slippage Included', journeySettings.includeCosts ? 'YES' : 'NO'],
+      ['Total Brokerage (INR)', jc.brokerage.toFixed(2)],
+      ['Total STT (INR)', jc.stt.toFixed(2)],
+      [
+        'Total Exchange + SEBI + IPFT (INR)',
+        (jc.exchangeTxn + jc.sebi + jc.ipft).toFixed(2),
+      ],
+      ['Total Stamp Duty (INR)', jc.stampDuty.toFixed(2)],
+      ['Total GST 18% (INR)', jc.gst.toFixed(2)],
+      ['Total Execution Slippage (INR)', jc.slippage.toFixed(2)],
+      ['Total Friction (Charges + Slippage INR)', jc.totalFriction.toFixed(2)],
       ['Trading Days', String(backtest.totalDays)],
       ['Winning Days', String(backtest.winningDays)],
       ['Losing Days', String(backtest.losingDays)],
-      ['Total Trades', String(backtest.totalTrades)],
+      ['Total Signals / Executed / Skipped', `${backtest.totalTrades} / ${js.executedTrades} / ${js.skippedTrades}`],
       ['Winning Trades', String(backtest.wins)],
       ['Losing Trades', String(backtest.losses)],
       ['Cost/Breakeven Exits', String(backtest.breakevens)],
@@ -528,9 +595,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         backtest.accuracyExclBreakevenPct.toFixed(2),
       ],
       ['Total Net P&L (Points)', backtest.netPoints.toFixed(2)],
-      ['Total Net P&L (INR)', backtest.netRupees.toFixed(2)],
       ['Profit Factor', backtest.profitFactor.toFixed(2)],
-      ['Max Drawdown (Points)', backtest.maxDrawdownPoints.toFixed(2)],
+      ['Max Capital Drawdown (INR)', js.maxDrawdownRupees.toFixed(2)],
+      ['Max Capital Drawdown (%)', js.maxDrawdownPct.toFixed(2)],
       ['Entry Buffer (Points)', String(config.entryBufferPoints)],
       ['SL / Target (Points)', `${config.stopLossPoints} / ${config.targetPoints}`],
       ['Max Trades / Day', String(config.maxTradesPerDay)],
@@ -554,9 +621,13 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         'Exit Price',
         'Exit Reason',
         'Trailed To Cost',
+        'Lots',
         'P&L Points',
-        'P&L INR',
-        'Capital After Trade (INR)',
+        'Gross P&L INR',
+        'Brokerage & Taxes INR',
+        'Slippage INR',
+        'Net P&L INR',
+        'Real-Life Capital After Trade (INR)',
       ],
       ...tradeRowsWithCap,
     ];
@@ -577,21 +648,17 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   };
 
   const handleExportJson = () => {
-    if (!backtest || !fetchedRange) return;
-    const endingCapital = startingCapital + backtest.netRupees;
-    const totalRoiPct =
-      startingCapital > 0 ? (backtest.netRupees / startingCapital) * 100 : 0;
+    if (!backtest || !fetchedRange || !traderJourney) return;
     const payload = {
       symbol: fetchedRange.symbol,
       fromDate: fetchedRange.fromDate,
       toDate: fetchedRange.toDate,
       exportedAt: new Date().toISOString(),
       config,
-      capital: {
-        startingCapital,
-        endingCapital,
-        netGainRupees: backtest.netRupees,
-        totalRoiPct,
+      realLifeSimulation: {
+        settings: journeySettings,
+        summary: traderJourney.summary,
+        costsBreakdown: traderJourney.costs,
       },
       summary: {
         totalDays: backtest.totalDays,
@@ -606,7 +673,8 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         winRatePct: backtest.winRatePct,
         accuracyExclBreakevenPct: backtest.accuracyExclBreakevenPct,
         netPoints: backtest.netPoints,
-        netRupees: backtest.netRupees,
+        netRupees: traderJourney.summary.netGain,
+        grossRupees: traderJourney.summary.grossGain,
         profitFactor: backtest.profitFactor,
         maxDrawdownPoints: backtest.maxDrawdownPoints,
         expectancyPoints: backtest.expectancyPoints,
@@ -617,11 +685,9 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         maxConsecutiveWins: backtest.maxConsecutiveWins,
         maxConsecutiveLosses: backtest.maxConsecutiveLosses,
       },
-      monthlySummaries: backtest.monthlySummaries,
-      dailySummaries: backtest.dailySummaries.map(
-        ({ candles: _omit, ...rest }) => rest
-      ),
-      trades: backtest.allTrades,
+      monthlySummaries: traderJourney.monthSeries,
+      dailySummaries: traderJourney.daySeries,
+      trades: traderJourney.tradeSeries,
     };
 
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -1024,21 +1090,30 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                     </span>
                   </div>
                   <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
-                    {formatINR(backtest.netRupees, { signed: true })} · ROI{' '}
-                    <span
-                      className={
-                        backtest.netRupees >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
-                          : 'text-red-600 dark:text-red-400 font-semibold'
-                      }
-                    >
-                      {startingCapital > 0
-                        ? `${backtest.netRupees >= 0 ? '+' : ''}${(
-                            (backtest.netRupees / startingCapital) *
-                            100
-                          ).toFixed(1)}%`
-                        : '0.0%'}
-                    </span>
+                    {traderJourney ? (
+                      <>
+                        {formatINR(traderJourney.summary.netGain, {
+                          signed: true,
+                          decimals: 0,
+                        })}{' '}
+                        {journeySettings.includeCosts ? 'net' : 'gross'} ·{' '}
+                        <span
+                          className={
+                            traderJourney.summary.netGain >= 0
+                              ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+                              : 'text-red-600 dark:text-red-400 font-semibold'
+                          }
+                        >
+                          {traderJourney.summary.netRoiPct >= 0 ? '+' : ''}
+                          {traderJourney.summary.netRoiPct.toFixed(1)}% ROI
+                        </span>
+                      </>
+                    ) : (
+                      formatINR(backtest.netRupees, {
+                        signed: true,
+                        decimals: 0,
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -1083,18 +1158,22 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 </div>
               </div>
 
-              {/* Capital Growth & Trade / Day / Month Gain-Loss Analytics */}
-              <BacktestCapitalAnalytics
-                backtest={backtest}
-                config={config}
-                symbol={fetchedRange?.symbol || activeSymbol}
-                fromDate={fetchedRange?.fromDate || fromDate}
-                toDate={fetchedRange?.toDate || toDate}
-                startingCapital={startingCapital}
-                startingCapitalInput={startingCapitalInput}
-                onStartingCapitalInputChange={handleStartingCapitalInputChange}
-                theme={theme}
-              />
+              {/* Real-Life Trader Capital Journey, Brokerage/Taxes & Slippage Analytics */}
+              {traderJourney && (
+                <BacktestCapitalAnalytics
+                  backtest={backtest}
+                  config={config}
+                  symbol={fetchedRange?.symbol || activeSymbol}
+                  fromDate={fetchedRange?.fromDate || fromDate}
+                  toDate={fetchedRange?.toDate || toDate}
+                  startingCapitalInput={startingCapitalInput}
+                  onStartingCapitalInputChange={handleStartingCapitalInputChange}
+                  journeySettings={journeySettings}
+                  onChangeJourneySettings={handleChangeJourneySettings}
+                  journey={traderJourney}
+                  theme={theme}
+                />
+              )}
 
               {/* Detailed Period Analysis Grid */}
               <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
