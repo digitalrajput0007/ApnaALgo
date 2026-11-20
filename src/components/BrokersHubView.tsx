@@ -3,9 +3,11 @@ import {
   ArrowRight,
   Check,
   Copy,
+  KeyRound,
   Link2,
   LogOut,
   RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FyersLiveFeedController } from '../hooks/useFyersLiveFeed';
@@ -54,6 +56,8 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
   const [brokers, setBrokers] = useState<BrokerStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedCallback, setCopiedCallback] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [savingPin, setSavingPin] = useState(false);
 
   const fetchBrokers = useCallback(async () => {
     try {
@@ -98,7 +102,49 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
     toast.success('Fyers account disconnected.');
   };
 
+  const handleSavePin = async () => {
+    const trimmed = pinInput.trim();
+    if (!/^\d{4,6}$/.test(trimmed)) {
+      toast.error('Please enter your valid 4-digit numeric Fyers PIN.');
+      return;
+    }
+    setSavingPin(true);
+    const res = await fyersFeed.saveFyersPin(trimmed);
+    setSavingPin(false);
+    if (!res.ok) {
+      toast.error(res.error || 'Could not save Fyers PIN.');
+      return;
+    }
+    setPinInput('');
+    await fetchBrokers();
+    toast.success(
+      res.refreshedNow
+        ? 'Fyers PIN saved & daily access token refreshed automatically (15-day renewal active).'
+        : 'Fyers PIN encrypted & saved — 15-day automatic daily token renewal is now active.'
+    );
+  };
+
+  const handleClearPin = async () => {
+    setSavingPin(true);
+    const res = await fyersFeed.saveFyersPin(null);
+    setSavingPin(false);
+    if (res.ok) {
+      await fetchBrokers();
+      toast.info('Saved account Fyers PIN removed.');
+    }
+  };
+
   const isFyersConnected = Boolean(fyersFeed.status?.authenticated);
+  const isAutoRefreshOn = Boolean(fyersFeed.status?.autoRefreshEnabled);
+  const lastRefreshedLabel = fyersFeed.status?.lastRefreshedAt
+    ? new Date(fyersFeed.status.lastRefreshedAt).toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+    : '—';
 
   return (
     <div className="space-y-6">
@@ -258,6 +304,77 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                 </div>
               </div>
             )}
+            {/* 15-Day Automatic Token Renewal (Encrypted 4-Digit Fyers PIN) */}
+            {isFyersConnected && (
+              <div
+                className={`p-3.5 rounded-lg border space-y-2.5 ${
+                  isAutoRefreshOn
+                    ? 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25'
+                    : 'bg-amber-50/70 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    {isAutoRefreshOn ? (
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    )}
+                    <span>
+                      {isAutoRefreshOn
+                        ? '15-Day Auto Token Renewal Active'
+                        : 'Prevent Daily Fyers Re-Login (Save 4-Digit PIN)'}
+                    </span>
+                  </div>
+                  {fyersFeed.status?.pinSource === 'account' && (
+                    <button
+                      type="button"
+                      onClick={() => void handleClearPin()}
+                      disabled={savingPin}
+                      className="text-[11px] font-medium text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 cursor-pointer"
+                    >
+                      Remove PIN
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {isAutoRefreshOn
+                    ? 'SEBI resets broker tokens at 06:00 IST daily. Your encrypted PIN + refresh token automatically renews your Fyers session every morning for 15 days without reconnecting.'
+                    : 'SEBI expires Indian broker access tokens daily at 06:00 IST. Save your 4-digit Fyers PIN once (AES-256 encrypted on server) so NeoAlgo auto-renews your token every morning for 15 days.'}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={pinInput}
+                    onChange={(e) =>
+                      setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))
+                    }
+                    placeholder={
+                      isAutoRefreshOn
+                        ? 'Update 4-digit Fyers PIN'
+                        : 'Enter 4-digit Fyers PIN'
+                    }
+                    className="w-48 px-3 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePin()}
+                    disabled={savingPin || pinInput.trim().length < 4}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    {savingPin
+                      ? 'Saving...'
+                      : isAutoRefreshOn
+                      ? 'Update PIN'
+                      : 'Enable Auto-Renewal'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Account Summary Panel */}
@@ -292,7 +409,7 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
                 }`}
               >
                 {fyersFeed.isStreaming
-                  ? 'Streaming Live'
+                  ? 'Streaming Live (Server)'
                   : isFyersConnected
                   ? 'Standby'
                   : 'Offline'}
@@ -302,10 +419,24 @@ export const BrokersHubView: React.FC<BrokersHubViewProps> = ({
               <span className="text-slate-500 dark:text-slate-400">
                 Session Renewal
               </span>
-              <span className="font-medium text-slate-700 dark:text-slate-300">
-                {fyersFeed.status?.autoRefreshEnabled
+              <span
+                className={`font-medium ${
+                  isAutoRefreshOn
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {isAutoRefreshOn
                   ? '15-Day Auto-Refresh'
-                  : 'Daily (06:00 IST)'}
+                  : 'Manual Daily (Add PIN)'}
+              </span>
+            </div>
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <span className="text-slate-500 dark:text-slate-400">
+                Last Token Refresh
+              </span>
+              <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
+                {lastRefreshedLabel}
               </span>
             </div>
           </div>

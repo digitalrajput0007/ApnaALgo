@@ -340,27 +340,133 @@ export interface OptionDeltaPreset {
 export const OPTION_DELTA_PRESETS: OptionDeltaPreset[] = [
   {
     id: 'atm',
-    label: 'ATM (~0.52Δ)',
-    delta: 0.52,
+    label: 'ATM (0.50Δ)',
+    delta: 0.5,
     itmSteps: 0,
-    summary: 'Lowest upfront capital, but higher theta decay during pullbacks.',
+    summary:
+      'Default Options Buy setup: exact 0.50Δ so a 20pt index SL = 10pt option SL with top ATM liquidity.',
   },
   {
     id: 'itm_recommended',
-    label: 'ITM 1–2 (~0.65Δ)',
-    delta: 0.65,
-    itmSteps: 2,
+    label: 'ITM 1 (~0.60Δ)',
+    delta: 0.6,
+    itmSteps: 1,
     summary:
-      'Recommended sweet spot: low theta bleed, clean 1:1 cost trail & 1:3 RR.',
+      'Lower theta decay with intrinsic value; 20pt index move ≈ 12pt option move.',
   },
   {
     id: 'deep_itm',
-    label: 'Deep ITM (~0.75Δ)',
-    delta: 0.75,
-    itmSteps: 3,
-    summary: 'Closest to Futures movement with minimal time decay.',
+    label: 'Deep ITM (~0.70Δ)',
+    delta: 0.7,
+    itmSteps: 2,
+    summary: 'Closest to index movement with minimal time decay; higher premium per lot.',
   },
 ];
+
+export interface RiskBasedLotCalculation {
+  optionSlPoints: number;
+  riskPerLotRupees: number;
+  allowedRiskRupees: number;
+  rawLotsByRisk: number;
+  capitalPerLotRupees: number | null;
+  affordableLots: number | null;
+  recommendedLots: number;
+  totalRiskAtRecommendedLots: number;
+  totalCapitalRequired: number | null;
+  cappedByCapital: boolean;
+  cappedByMaxLots: boolean;
+}
+
+export function calculateRiskBasedLots(params: {
+  startingCapital: number;
+  liveEquity: number;
+  riskMode: 'FIXED_INR' | 'PERCENT_CAPITAL';
+  riskPerTradeRupees: number;
+  riskPerTradePct: number;
+  maxLotsCap: number;
+  indexStopLossPoints: number;
+  optionDelta: number;
+  isOptionBuying: boolean;
+  lotSize: number;
+  optionLtp?: number | null;
+}): RiskBasedLotCalculation {
+  const effectiveDelta = params.isOptionBuying
+    ? Math.max(0.2, Math.min(1, params.optionDelta || 0.5))
+    : 1;
+  const optionSlPoints = Math.max(
+    0.5,
+    Math.round(params.indexStopLossPoints * effectiveDelta * 100) / 100
+  );
+  const lotSize = Math.max(1, Math.round(params.lotSize || 1));
+  const riskPerLotRupees = Math.max(
+    1,
+    Math.round(optionSlPoints * lotSize * 100) / 100
+  );
+
+  const equityBase = Math.max(0, params.liveEquity || params.startingCapital);
+  const allowedRiskRupees =
+    params.riskMode === 'PERCENT_CAPITAL'
+      ? Math.max(
+          100,
+          Math.round((equityBase * Math.max(0.1, params.riskPerTradePct)) / 100)
+        )
+      : Math.max(100, Math.round(params.riskPerTradeRupees));
+
+  const rawLotsByRisk = Math.max(
+    1,
+    Math.floor(allowedRiskRupees / riskPerLotRupees)
+  );
+  const maxLotsCap = Math.max(1, Math.floor(params.maxLotsCap || 20));
+
+  const hasValidLtp =
+    params.isOptionBuying &&
+    typeof params.optionLtp === 'number' &&
+    Number.isFinite(params.optionLtp) &&
+    params.optionLtp > 0;
+
+  const capitalPerLotRupees = hasValidLtp
+    ? Math.round((params.optionLtp as number) * lotSize * 100) / 100
+    : null;
+  const affordableLots =
+    capitalPerLotRupees && capitalPerLotRupees > 0
+      ? Math.floor(equityBase / capitalPerLotRupees)
+      : null;
+
+  let recommendedLots = rawLotsByRisk;
+  let cappedByMaxLots = false;
+  let cappedByCapital = false;
+
+  if (recommendedLots > maxLotsCap) {
+    recommendedLots = maxLotsCap;
+    cappedByMaxLots = true;
+  }
+  if (
+    affordableLots !== null &&
+    affordableLots >= 1 &&
+    recommendedLots > affordableLots
+  ) {
+    recommendedLots = affordableLots;
+    cappedByCapital = true;
+  }
+  recommendedLots = Math.max(1, recommendedLots);
+
+  return {
+    optionSlPoints,
+    riskPerLotRupees,
+    allowedRiskRupees,
+    rawLotsByRisk,
+    capitalPerLotRupees,
+    affordableLots,
+    recommendedLots,
+    totalRiskAtRecommendedLots: Math.round(recommendedLots * riskPerLotRupees),
+    totalCapitalRequired:
+      capitalPerLotRupees !== null
+        ? Math.round(recommendedLots * capitalPerLotRupees)
+        : null,
+    cappedByCapital,
+    cappedByMaxLots,
+  };
+}
 
 /**
  * Extract the canonical F&O underlying name from any Fyers symbol or scenario label.
@@ -587,13 +693,13 @@ export function computeOptionRecommendation(params: {
   );
 
   let deltaGuidance =
-    'Sweet spot (0.60–0.70Δ): intrinsic-heavy ITM minimizes theta decay during RSI pullbacks and keeps 1:1 cost trail clean.';
-  if (effectiveDelta < 0.56) {
+    '0.50Δ ATM (Recommended): 20pt index SL maps cleanly to a 10pt option SL. Auto-expiry rolls to Next Expiry on expiry day to protect delta.';
+  if (effectiveDelta >= 0.56 && effectiveDelta < 0.7) {
     deltaGuidance =
-      'ATM (~0.50Δ): lower capital needed, but watch theta bleed if price consolidates for 20+ mins after entry.';
-  } else if (effectiveDelta >= 0.72) {
+      'ITM (~0.60Δ): intrinsic cushion reduces theta bleed; 20pt index move ≈ 12pt option move.';
+  } else if (effectiveDelta >= 0.7) {
     deltaGuidance =
-      'Deep ITM (0.75Δ+): tracks spot closely like a mini-future with almost zero theta drag; slightly higher upfront premium.';
+      'Deep ITM (0.70Δ+): tracks spot closely with minimal time decay; higher capital per lot.';
   }
 
   return {

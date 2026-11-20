@@ -15,6 +15,7 @@ import {
 } from './server/brokers/types';
 import { candleStore } from './server/candleStore';
 import { instrumentMaster } from './server/instrumentMaster';
+import { liveStreamManager, StreamQuoteTick } from './server/liveStreamManager';
 import {
   AccountStatus,
   PublicSaaSUser,
@@ -159,46 +160,114 @@ function isFyersAuthError(message: string): boolean {
   );
 }
 
+function resolveFyersPinForConnection(
+  conn: BrokerConnectionRecord | null
+): { pin: string | null; source: 'account' | 'server' | null } {
+  const accountPin = conn?.pin?.trim();
+  if (accountPin) return { pin: accountPin, source: 'account' };
+  const envPin = getFyersPin();
+  if (envPin) return { pin: envPin, source: 'server' };
+  return { pin: null, source: null };
+}
+
+/**
+ * SEBI resets Indian broker daily access tokens around 06:00 IST.
+ * Returns true if the stored access token was last updated before the most recent 06:00 IST cutoff.
+ */
+function isFyersTokenStaleForTodayIst(updatedAt: number | undefined): boolean {
+  if (!updatedAt || !Number.isFinite(updatedAt)) return true;
+  const nowMs = Date.now();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const nowIst = new Date(nowMs + istOffsetMs);
+  const cutoffIst = new Date(
+    Date.UTC(
+      nowIst.getUTCFullYear(),
+      nowIst.getUTCMonth(),
+      nowIst.getUTCDate(),
+      6,
+      5,
+      0
+    )
+  );
+  // If current IST time is before 06:05 AM, the active cutoff was yesterday 06:05 AM IST
+  if (nowIst.getTime() < cutoffIst.getTime()) {
+    cutoffIst.setUTCDate(cutoffIst.getUTCDate() - 1);
+  }
+  const cutoffUtcMs = cutoffIst.getTime() - istOffsetMs;
+  return updatedAt < cutoffUtcMs;
+}
+
+const fyersRefreshInFlight = new Map<string, Promise<boolean>>();
+
 async function tryRefreshFyersConnection(
   userId: string,
   conn: BrokerConnectionRecord,
   creds: { appId: string; secretId: string }
 ): Promise<boolean> {
-  const pin = getFyersPin();
+  const { pin } = resolveFyersPinForConnection(conn);
   if (!conn.refreshToken || !pin) {
     return false;
   }
-  try {
-    const appIdHash = crypto
-      .createHash('sha256')
-      .update(`${creds.appId}:${creds.secretId}`)
-      .digest('hex');
 
-    const resp = await fetch(`${FYERS_API_BASE}/validate-refresh-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'refresh_token',
-        appIdHash,
-        refresh_token: conn.refreshToken,
-        pin,
-      }),
-    });
+  const existing = fyersRefreshInFlight.get(userId);
+  if (existing) return existing;
 
-    const data = (await resp.json()) as {
-      s?: string;
-      access_token?: string;
-    };
+  const task = (async () => {
+    try {
+      const appIdHash = crypto
+        .createHash('sha256')
+        .update(`${creds.appId}:${creds.secretId}`)
+        .digest('hex');
 
-    if (resp.ok && data.s === 'ok' && data.access_token) {
-      conn.accessToken = data.access_token;
-      conn.updatedAt = Date.now();
-      saasStore.setBrokerConnection(userId, conn);
-      return true;
+      const resp = await fetch(`${FYERS_API_BASE}/validate-refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'refresh_token',
+          appIdHash,
+          refresh_token: conn.refreshToken,
+          pin,
+        }),
+      });
+
+      const data = (await resp.json()) as {
+        s?: string;
+        access_token?: string;
+        refresh_token?: string;
+      };
+
+      if (resp.ok && data.s === 'ok' && data.access_token) {
+        conn.accessToken = data.access_token;
+        if (data.refresh_token) {
+          conn.refreshToken = data.refresh_token;
+        }
+        conn.updatedAt = Date.now();
+        saasStore.setBrokerConnection(userId, conn);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      fyersRefreshInFlight.delete(userId);
     }
-    return false;
-  } catch {
-    return false;
+  })();
+
+  fyersRefreshInFlight.set(userId, task);
+  return task;
+}
+
+async function proactivelyRefreshStaleFyersConnections(): Promise<void> {
+  const creds = getFyersCredentials();
+  if (!creds) return;
+  const all = saasStore.getAllBrokerConnections('fyers');
+  for (const { userId, connection } of all) {
+    if (isFyersTokenStaleForTodayIst(connection.updatedAt)) {
+      const { pin } = resolveFyersPinForConnection(connection);
+      if (connection.refreshToken && pin) {
+        await tryRefreshFyersConnection(userId, connection, creds);
+      }
+    }
   }
 }
 
@@ -427,12 +496,17 @@ async function fetchFyersHistoryRange(
   return sorted.map((bar, idx) => ({ ...bar, index: idx }));
 }
 
-async function fetchFyersQuote(
+async function fetchFyersQuotesBatch(
   appId: string,
   accessToken: string,
-  symbol: string
-) {
-  const params = new URLSearchParams({ symbols: symbol });
+  symbols: string[]
+): Promise<Record<string, StreamQuoteTick>> {
+  const cleanSymbols = Array.from(
+    new Set(symbols.map((s) => s.trim()).filter(Boolean))
+  );
+  if (cleanSymbols.length === 0) return {};
+
+  const params = new URLSearchParams({ symbols: cleanSymbols.join(',') });
   const resp = await fetch(`${FYERS_DATA_BASE}/quotes?${params.toString()}`, {
     headers: {
       Authorization: `${appId}:${accessToken}`,
@@ -463,25 +537,53 @@ async function fetchFyersQuote(
     throw new Error(data.message || `Fyers quote error (${resp.status})`);
   }
 
-  const quoteItem = data.d[0];
-  const v = quoteItem.v || {};
   const nowEpochSec = Math.floor(Date.now() / 1000);
+  const istDate = formatIstDateYYYYMMDD(nowEpochSec);
+  const istTime = formatIstHHMM(nowEpochSec);
+  const istTimeSec = formatIstHHMMSS(nowEpochSec);
+  const out: Record<string, StreamQuoteTick> = {};
+  const quoteList = data.d;
 
-  return {
-    symbol: quoteItem.n || symbol,
-    ltp: v.lp ?? 0,
-    change: v.ch ?? 0,
-    changePct: v.chp ?? 0,
-    open: v.open_price ?? 0,
-    high: v.high_price ?? 0,
-    low: v.low_price ?? 0,
-    prevClose: v.prev_close_price ?? 0,
-    volume: v.volume ?? 0,
-    epoch: nowEpochSec,
-    istDate: formatIstDateYYYYMMDD(nowEpochSec),
-    istTime: formatIstHHMM(nowEpochSec),
-    istTimeSec: formatIstHHMMSS(nowEpochSec),
-  };
+  for (let i = 0; i < quoteList.length; i++) {
+    const quoteEntry = quoteList[i];
+    if (!quoteEntry || quoteEntry.s === 'error') continue;
+    const v = quoteEntry.v || {};
+    const sym = quoteEntry.n || cleanSymbols[i] || cleanSymbols[0];
+    const tick: StreamQuoteTick = {
+      symbol: sym,
+      ltp: v.lp ?? 0,
+      change: v.ch ?? 0,
+      changePct: v.chp ?? 0,
+      open: v.open_price ?? 0,
+      high: v.high_price ?? 0,
+      low: v.low_price ?? 0,
+      prevClose: v.prev_close_price ?? 0,
+      volume: v.volume ?? 0,
+      epoch: nowEpochSec,
+      istDate,
+      istTime,
+      istTimeSec,
+    };
+    out[sym] = tick;
+    if (cleanSymbols[i] && !out[cleanSymbols[i]]) {
+      out[cleanSymbols[i]] = tick;
+    }
+  }
+
+  return out;
+}
+
+async function fetchFyersQuote(
+  appId: string,
+  accessToken: string,
+  symbol: string
+): Promise<StreamQuoteTick> {
+  const map = await fetchFyersQuotesBatch(appId, accessToken, [symbol]);
+  const found = map[symbol] ?? Object.values(map)[0];
+  if (!found) {
+    throw new Error(`No Fyers quote returned for ${symbol}`);
+  }
+  return found;
 }
 
 async function startServer() {
@@ -1133,6 +1235,95 @@ async function startServer() {
     });
   });
 
+  app.put('/api/user/index-strategy', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Strategy configuration is Admin-only.' });
+      return;
+    }
+    const rawSymbol = typeof req.body?.symbol === 'string' ? req.body.symbol : '';
+    const config = req.body?.config;
+    if (!rawSymbol.trim() || !config || typeof config !== 'object' || Array.isArray(config)) {
+      res.status(400).json({ error: 'Valid symbol and strategy config object required.' });
+      return;
+    }
+    const normalizedSymbol = normalizeFyersSymbol(rawSymbol);
+    const current = saasStore.getWorkspace(user.id);
+    const nextMap = {
+      ...(current.perIndexConfigs ?? {}),
+      [normalizedSymbol]: config as Record<string, unknown>,
+    };
+    const updated = saasStore.updateWorkspace(user.id, {
+      perIndexConfigs: nextMap,
+    });
+    res.json({
+      ok: true,
+      symbol: normalizedSymbol,
+      perIndexConfigs: updated.perIndexConfigs ?? {},
+      updatedAt: updated.updatedAt,
+    });
+  });
+
+  app.delete('/api/user/index-strategy', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'owner') {
+      res.status(403).json({ error: 'Strategy configuration is Admin-only.' });
+      return;
+    }
+    const rawSymbol =
+      typeof req.query.symbol === 'string'
+        ? req.query.symbol
+        : typeof req.body?.symbol === 'string'
+        ? req.body.symbol
+        : '';
+    if (!rawSymbol.trim()) {
+      res.status(400).json({ error: 'Symbol is required.' });
+      return;
+    }
+    const normalizedSymbol = normalizeFyersSymbol(rawSymbol);
+    const current = saasStore.getWorkspace(user.id);
+    const nextMap = { ...(current.perIndexConfigs ?? {}) };
+    delete nextMap[normalizedSymbol];
+    const updated = saasStore.updateWorkspace(user.id, {
+      perIndexConfigs: nextMap,
+    });
+    res.json({
+      ok: true,
+      symbol: normalizedSymbol,
+      perIndexConfigs: updated.perIndexConfigs ?? {},
+      updatedAt: updated.updatedAt,
+    });
+  });
+
+  app.put('/api/user/paper-wallet', (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const wallet = req.body?.wallet;
+    if (!wallet || typeof wallet !== 'object' || Array.isArray(wallet)) {
+      res.status(400).json({ error: 'Valid paper wallet object required.' });
+      return;
+    }
+    const updated = saasStore.updateWorkspace(user.id, {
+      paperWallet: wallet as Record<string, unknown>,
+    });
+    res.json({
+      ok: true,
+      paperWallet: updated.paperWallet,
+      updatedAt: updated.updatedAt,
+    });
+  });
+
   // =========================================================================
   // 3. MULTI-BROKER HUB REGISTRY (/api/brokers/*)
   // =========================================================================
@@ -1149,6 +1340,9 @@ async function startServer() {
     const brokers: BrokerPublicStatus[] = BROKER_CATALOG.map((item) => {
       const conn = saasStore.getBrokerConnection(user.id, item.id);
       const isFyers = item.id === 'fyers';
+      const pinInfo = isFyers
+        ? resolveFyersPinForConnection(conn)
+        : { pin: null, source: null };
       return {
         id: item.id,
         name: item.name,
@@ -1160,9 +1354,10 @@ async function startServer() {
         connected: Boolean(conn),
         profile: conn?.profile ?? null,
         connectedAt: conn?.connectedAt ?? null,
-        autoRefreshEnabled: Boolean(
-          isFyers && conn?.refreshToken && getFyersPin()
-        ),
+        lastRefreshedAt: conn?.updatedAt ?? null,
+        hasPin: Boolean(pinInfo.pin),
+        pinSource: pinInfo.source,
+        autoRefreshEnabled: Boolean(isFyers && conn?.refreshToken && pinInfo.pin),
         callbackUrl: isFyers ? `${appUrl}${fyersCallbackPath}` : null,
         capabilities: item.capabilities,
         description: item.description,
@@ -1179,6 +1374,9 @@ async function startServer() {
       return;
     }
     const brokerId = req.params.brokerId as BrokerId;
+    if (brokerId === 'fyers') {
+      liveStreamManager.stopStream(user.id);
+    }
     saasStore.removeBrokerConnection(user.id, brokerId);
     res.json({ ok: true, brokerId });
   });
@@ -1488,11 +1686,31 @@ async function startServer() {
   // 4. PER-USER FYERS API v3 CONNECTOR (/api/fyers/* & /auth/fyers/callback)
   // =========================================================================
 
-  app.get('/api/fyers/status', (req: Request, res: Response) => {
+  app.get('/api/fyers/status', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
     const creds = getFyersCredentials();
     const user = getAuthenticatedUserFromReq(req);
-    const conn = user ? saasStore.getBrokerConnection(user.id, 'fyers') : null;
+    let conn = user ? saasStore.getBrokerConnection(user.id, 'fyers') : null;
     const appUrl = getAppUrl(req);
+
+    // Proactively refresh overnight/stale Fyers token so user doesn't have to re-login daily
+    if (
+      user &&
+      creds &&
+      conn &&
+      isFyersTokenStaleForTodayIst(conn.updatedAt)
+    ) {
+      const { pin } = resolveFyersPinForConnection(conn);
+      if (conn.refreshToken && pin) {
+        const ok = await tryRefreshFyersConnection(user.id, conn, creds);
+        if (ok) {
+          conn = saasStore.getBrokerConnection(user.id, 'fyers');
+        }
+      }
+    }
+
+    const pinInfo = resolveFyersPinForConnection(conn);
+    const streamSnapshot = user ? liveStreamManager.getSnapshot(user.id) : null;
 
     res.json({
       configured: Boolean(creds),
@@ -1500,10 +1718,147 @@ async function startServer() {
       authenticated: Boolean(conn),
       profile: conn?.profile ?? null,
       connectedAt: conn?.connectedAt ?? null,
-      autoRefreshEnabled: Boolean(conn?.refreshToken && getFyersPin()),
+      lastRefreshedAt: conn?.updatedAt ?? null,
+      tokenStale: conn ? isFyersTokenStaleForTodayIst(conn.updatedAt) : false,
+      hasPin: Boolean(pinInfo.pin),
+      pinSource: pinInfo.source,
+      autoRefreshEnabled: Boolean(conn?.refreshToken && pinInfo.pin),
       callbackUrl: `${appUrl}${fyersCallbackPath}`,
       istToday: getCurrentIstDateString(),
+      activeStream: streamSnapshot
+        ? {
+            active: streamSnapshot.active,
+            symbol: streamSnapshot.symbol,
+            optionSymbol: streamSnapshot.optionSymbol,
+            startedAt: streamSnapshot.startedAt,
+            date: streamSnapshot.date,
+          }
+        : null,
     });
+  });
+
+  app.post('/api/fyers/pin', async (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const rawPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+    const clear = Boolean(req.body?.clear);
+
+    const existing = saasStore.getBrokerConnection(user.id, 'fyers');
+    if (!existing) {
+      res.status(400).json({ error: 'Connect your Fyers account first before saving your PIN.' });
+      return;
+    }
+
+    if (clear) {
+      saasStore.updateBrokerPin(user.id, 'fyers', null);
+      const pinInfo = resolveFyersPinForConnection(
+        saasStore.getBrokerConnection(user.id, 'fyers')
+      );
+      res.json({
+        ok: true,
+        hasPin: Boolean(pinInfo.pin),
+        pinSource: pinInfo.source,
+        autoRefreshEnabled: Boolean(existing.refreshToken && pinInfo.pin),
+      });
+      return;
+    }
+
+    if (!/^\d{4,6}$/.test(rawPin)) {
+      res.status(400).json({ error: 'Enter your valid 4-digit numeric Fyers PIN.' });
+      return;
+    }
+
+    const updated = saasStore.updateBrokerPin(user.id, 'fyers', rawPin);
+    let refreshedNow = false;
+    const creds = getFyersCredentials();
+    if (updated && creds && updated.refreshToken) {
+      refreshedNow = await tryRefreshFyersConnection(user.id, updated, creds);
+    }
+
+    const latest = saasStore.getBrokerConnection(user.id, 'fyers');
+    const pinInfo = resolveFyersPinForConnection(latest);
+    res.json({
+      ok: true,
+      refreshedNow,
+      hasPin: Boolean(pinInfo.pin),
+      pinSource: pinInfo.source,
+      autoRefreshEnabled: Boolean(latest?.refreshToken && pinInfo.pin),
+      lastRefreshedAt: latest?.updatedAt ?? null,
+    });
+  });
+
+  // Persistent Server-Side Live Stream Controls (/api/fyers/stream/*)
+  app.get('/api/fyers/stream/state', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    res.json(liveStreamManager.getSnapshot(user.id));
+  });
+
+  app.post('/api/fyers/stream/start', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const creds = getFyersCredentials();
+    const entry = getUserFyersEntry(req);
+    if (!creds || !entry) {
+      res.status(401).json({ error: 'Connect your Fyers account first.' });
+      return;
+    }
+    const rawSymbol =
+      typeof req.body?.symbol === 'string' && req.body.symbol.trim()
+        ? req.body.symbol
+        : 'NSE:NIFTY50-INDEX';
+    const rawOptionSymbol =
+      typeof req.body?.optionSymbol === 'string'
+        ? req.body.optionSymbol
+        : req.body?.optionSymbol === null
+        ? null
+        : undefined;
+
+    try {
+      const snapshot = await liveStreamManager.startStream(
+        entry.user.id,
+        rawSymbol,
+        rawOptionSymbol
+      );
+      res.json(snapshot);
+    } catch (err) {
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : 'Could not start live stream.',
+      });
+    }
+  });
+
+  app.post('/api/fyers/stream/stop', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const snapshot = liveStreamManager.stopStream(user.id);
+    res.json(snapshot);
+  });
+
+  app.post('/api/fyers/stream/option-symbol', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    const optionSymbol =
+      typeof req.body?.optionSymbol === 'string' && req.body.optionSymbol.trim()
+        ? req.body.optionSymbol.trim()
+        : null;
+    const snapshot = liveStreamManager.setOptionSymbol(user.id, optionSymbol);
+    res.json(snapshot);
   });
 
   app.get('/api/fyers/auth/url', (req: Request, res: Response) => {
@@ -2055,7 +2410,34 @@ async function startServer() {
 
   const httpServer = http.createServer(app);
 
+  // Configure persistent server-side Fyers LiveStreamManager
+  liveStreamManager.configure({
+    fetchHistory: async (userId, symbol, dateStr) => {
+      const creds = getFyersCredentials();
+      const conn = saasStore.getBrokerConnection(userId, 'fyers');
+      if (!creds || !conn) {
+        throw new Error('Fyers account is not connected.');
+      }
+      return runWithFyersAutoRefresh(userId, conn, creds, (token) =>
+        fetchFyersHistory(creds.appId, token, symbol, dateStr)
+      );
+    },
+    fetchQuotesBatch: async (userId, symbols) => {
+      const creds = getFyersCredentials();
+      const conn = saasStore.getBrokerConnection(userId, 'fyers');
+      if (!creds || !conn) {
+        throw new Error('Fyers account is not connected.');
+      }
+      return runWithFyersAutoRefresh(userId, conn, creds, (token) =>
+        fetchFyersQuotesBatch(creds.appId, token, symbols)
+      );
+    },
+    getCurrentIstDate: getCurrentIstDateString,
+    formatIstHHMM,
+  });
+
   // Per-user Real-time Fyers WebSocket broadcaster (/ws/fyers)
+  // Attaches to persistent server-side liveStreamManager so refreshing/closing browser never stops the stream!
   const wss = new WebSocketServer({ server: httpServer, path: '/ws/fyers' });
 
   wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
@@ -2073,100 +2455,27 @@ async function startServer() {
       return;
     }
 
-    let subscribedSymbol = 'NSE:NIFTY50-INDEX';
-    let subscribedDate = getCurrentIstDateString();
-    let active = false;
-    let pollTimer: NodeJS.Timeout | null = null;
-    let lastSyncedBucket = '';
-
-    const stopPolling = () => {
-      active = false;
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-      }
-    };
-
-    const runPoll = async () => {
-      if (!active || ws.readyState !== WebSocket.OPEN) return;
-      try {
-        const nowIst = formatIstHHMM(Math.floor(Date.now() / 1000));
-        const [hh, mm] = nowIst.split(':').map(Number);
-        const bucketMin = Math.floor(mm / 5) * 5;
-        const currentBucket = `${String(hh).padStart(2, '0')}:${String(
-          bucketMin
-        ).padStart(2, '0')}`;
-
-        if (currentBucket !== lastSyncedBucket) {
-          lastSyncedBucket = currentBucket;
-          const candles = await runWithFyersAutoRefresh(
-            entry.user.id,
-            entry.connection,
-            creds,
-            (token) =>
-              fetchFyersHistory(
-                creds.appId,
-                token,
-                subscribedSymbol,
-                subscribedDate
-              )
-          );
-          if (candles.length > 0) {
-            candleStore.upsertCandles(subscribedSymbol, candles);
-          }
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                type: 'history_sync',
-                symbol: subscribedSymbol,
-                date: subscribedDate,
-                candles,
-              })
-            );
-          }
-        }
-
-        const quote = await runWithFyersAutoRefresh(
-          entry.user.id,
-          entry.connection,
-          creds,
-          (token) => fetchFyersQuote(creds.appId, token, subscribedSymbol)
-        );
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'quote', data: quote }));
-        }
-      } catch (err) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: 'error',
-              message:
-                err instanceof Error ? err.message : 'Fyers stream poll error',
-            })
-          );
-        }
-      }
-    };
+    const userId = entry.user.id;
+    liveStreamManager.attachClient(userId, ws);
 
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString()) as {
           action?: string;
           symbol?: string;
-          date?: string;
+          optionSymbol?: string | null;
         };
         if (msg.action === 'subscribe') {
-          subscribedSymbol = normalizeFyersSymbol(msg.symbol);
-          subscribedDate = msg.date?.trim() || getCurrentIstDateString();
-          lastSyncedBucket = '';
-          stopPolling();
-          active = true;
-          void runPoll();
-          pollTimer = setInterval(() => {
-            void runPoll();
-          }, 1000);
+          const sym = normalizeFyersSymbol(msg.symbol);
+          void liveStreamManager
+            .startStream(userId, sym, msg.optionSymbol)
+            .then(() => {
+              liveStreamManager.attachClient(userId, ws);
+            });
+        } else if (msg.action === 'set_option') {
+          liveStreamManager.setOptionSymbol(userId, msg.optionSymbol ?? null);
         } else if (msg.action === 'unsubscribe') {
-          stopPolling();
+          liveStreamManager.stopStream(userId);
         }
       } catch {
         // Ignore malformed client frames
@@ -2174,9 +2483,18 @@ async function startServer() {
     });
 
     ws.on('close', () => {
-      stopPolling();
+      // Detach only — persistent server stream keeps running until explicitly stopped!
+      liveStreamManager.detachClient(userId, ws);
     });
   });
+
+  // Proactive daily Fyers token auto-refresh on boot & every 30 minutes
+  void proactivelyRefreshStaleFyersConnections().then(() => {
+    liveStreamManager.resumePersistedStreams();
+  });
+  setInterval(() => {
+    void proactivelyRefreshStaleFyersConnections();
+  }, 30 * 60 * 1000);
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`NeoAlgo SaaS server listening on http://0.0.0.0:${PORT}`);

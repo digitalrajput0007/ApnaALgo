@@ -20,6 +20,7 @@ export interface BrokerConnectionRecord {
   brokerId: BrokerId;
   accessToken: string;
   refreshToken?: string;
+  pin?: string;
   profile: BrokerProfile | null;
   connectedAt: number;
   updatedAt: number;
@@ -53,6 +54,9 @@ export interface BrokerPublicStatus {
   connected: boolean;
   profile: BrokerProfile | null;
   connectedAt: number | null;
+  lastRefreshedAt?: number | null;
+  hasPin?: boolean;
+  pinSource?: 'account' | 'server' | null;
   autoRefreshEnabled: boolean;
   callbackUrl: string | null;
   capabilities: BrokerCatalogItem['capabilities'];

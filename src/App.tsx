@@ -33,8 +33,12 @@ import {
   IntegrationsView,
 } from './components/IntegrationsView';
 import { NiftyChart } from './components/NiftyChart';
-import { OptionTradeDesk } from './components/OptionTradeDesk';
+import {
+  LiveOptionTickPayload,
+  OptionTradeDesk,
+} from './components/OptionTradeDesk';
 import { PaperCalendarView } from './components/PaperCalendarView';
+import { PaperWalletModal } from './components/PaperWalletModal';
 import { SettingsSection, SettingsView } from './components/SettingsView';
 import { StrategyControls } from './components/StrategyControls';
 import { TopBar, TradingMode, WorkspaceTab } from './components/TopBar';
@@ -43,7 +47,9 @@ import { TradesPositionsJournalView } from './components/TradesPositionsJournalV
 import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { YearlyBacktestView } from './components/YearlyBacktestView';
 import { formatINR } from './utils/formatters';
+import { normalizeFyersSymbol } from './utils/fyersSymbols';
 import {
+  calculateRiskBasedLots,
   getFallbackInstrumentMeta,
   InstrumentMeta,
 } from './utils/optionsEngine';
@@ -60,12 +66,15 @@ import {
   tradeRecordsToPaperEntries,
   usePaperTradeJournal,
 } from './hooks/usePaperTradeJournal';
+import { usePaperWallet } from './hooks/usePaperWallet';
 import { useSaaSAuth } from './hooks/useSaaSAuth';
 import { useTelegramAlerts } from './hooks/useTelegramAlerts';
 import {
   Candle,
   OrderJournalPayload,
   PaperTradeEntry,
+  PaperWalletConfig,
+  PerIndexStrategyMap,
   SavedBacktestReport,
   ScenarioPreset,
   StrategyConfig,
@@ -113,6 +122,7 @@ class ChartErrorBoundary extends React.Component<
 }
 
 const SAVED_CONFIG_KEY = 'neoalgo_saved_strategy_config_v1';
+const PER_INDEX_CONFIGS_KEY = 'neoalgo_per_index_strategies_v1';
 
 function loadSavedStrategyConfig(userId?: string | null): StrategyConfig {
   try {
@@ -126,6 +136,30 @@ function loadSavedStrategyConfig(userId?: string | null): StrategyConfig {
     return { ...DEFAULT_STRATEGY_CONFIG, ...parsed };
   } catch {
     return DEFAULT_STRATEGY_CONFIG;
+  }
+}
+
+function loadPerIndexConfigs(userId?: string | null): PerIndexStrategyMap {
+  try {
+    const key = userId
+      ? `${PER_INDEX_CONFIGS_KEY}_${userId}`
+      : PER_INDEX_CONFIGS_KEY;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, Partial<StrategyConfig>>;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: PerIndexStrategyMap = {};
+    for (const [sym, cfg] of Object.entries(parsed)) {
+      if (cfg && typeof cfg === 'object') {
+        out[normalizeFyersSymbol(sym)] = {
+          ...DEFAULT_STRATEGY_CONFIG,
+          ...cfg,
+        };
+      }
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -195,6 +229,9 @@ export default function App() {
     DEFAULT_STRATEGY_CONFIG
   );
   const [config, setConfig] = useState<StrategyConfig>(DEFAULT_STRATEGY_CONFIG);
+  const [perIndexConfigs, setPerIndexConfigs] = useState<PerIndexStrategyMap>(
+    {}
+  );
   const [serverSavedReports, setServerSavedReports] = useState<
     SavedBacktestReport[] | null
   >(null);
@@ -202,11 +239,15 @@ export default function App() {
   const saveTimerRef = useRef<number | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isPaperWalletOpen, setIsPaperWalletOpen] = useState(false);
+  const [liveOptionInfo, setLiveOptionInfo] =
+    useState<LiveOptionTickPayload | null>(null);
   const [copiedRecoveryBanner, setCopiedRecoveryBanner] = useState(false);
 
-  // Per-user Paper Trade Monthly Calendar & Trades/Positions Journal state (server-synced)
+  // Per-user Paper Trade Monthly Calendar, Trades/Positions Journal & Paper Wallet state (server-synced)
   const paperJournal = usePaperTradeJournal(userId);
   const orderJournal = useOrderPositionJournal(userId);
+  const paperWalletCtrl = usePaperWallet(userId);
   const lastLiveJournalSyncSigRef = useRef<string>('');
   const [calendarFocusMonth, setCalendarFocusMonth] = useState<string | null>(
     null
@@ -223,6 +264,7 @@ export default function App() {
     if (!userId) {
       setSavedConfig(DEFAULT_STRATEGY_CONFIG);
       setConfig(DEFAULT_STRATEGY_CONFIG);
+      setPerIndexConfigs({});
       setServerSavedReports(null);
       setPresets(getScenarioPresets());
       setSelectedScenarioId('today_bullish');
@@ -232,8 +274,10 @@ export default function App() {
 
     let cancelled = false;
     const localFallback = loadSavedStrategyConfig(userId);
+    const localPerIndex = loadPerIndexConfigs(userId);
     setSavedConfig(localFallback);
     setConfig(localFallback);
+    setPerIndexConfigs(localPerIndex);
 
     (async () => {
       try {
@@ -243,11 +287,34 @@ export default function App() {
         if (!resp.ok || cancelled) return;
         const data = (await resp.json()) as {
           strategyConfig?: Partial<StrategyConfig> | null;
+          perIndexConfigs?: Record<string, Partial<StrategyConfig>> | null;
+          paperWallet?: Partial<PaperWalletConfig> | null;
           paperTrades?: PaperTradeEntry[];
           savedReports?: SavedBacktestReport[];
           orderJournal?: Partial<OrderJournalPayload> | null;
         };
         if (cancelled) return;
+
+        if (data.perIndexConfigs && typeof data.perIndexConfigs === 'object') {
+          const mergedMap: PerIndexStrategyMap = {};
+          for (const [sym, cfg] of Object.entries(data.perIndexConfigs)) {
+            if (cfg && typeof cfg === 'object') {
+              mergedMap[normalizeFyersSymbol(sym)] = {
+                ...DEFAULT_STRATEGY_CONFIG,
+                ...cfg,
+              };
+            }
+          }
+          setPerIndexConfigs(mergedMap);
+          try {
+            window.localStorage.setItem(
+              `${PER_INDEX_CONFIGS_KEY}_${userId}`,
+              JSON.stringify(mergedMap)
+            );
+          } catch {
+            // ignore
+          }
+        }
 
         if (data.strategyConfig && typeof data.strategyConfig === 'object') {
           const merged = { ...DEFAULT_STRATEGY_CONFIG, ...data.strategyConfig };
@@ -261,6 +328,9 @@ export default function App() {
           } catch {
             // ignore
           }
+        }
+        if (data.paperWallet && typeof data.paperWallet === 'object') {
+          paperWalletCtrl.hydrateFromServer(data.paperWallet);
         }
         paperJournal.hydrateFromServer(data.paperTrades ?? []);
         orderJournal.hydrateFromServer(data.orderJournal ?? null);
@@ -282,6 +352,72 @@ export default function App() {
     () => JSON.stringify(config) !== JSON.stringify(savedConfig),
     [config, savedConfig]
   );
+
+  const handleAttachStrategyToSymbol = (
+    rawSymbol: string,
+    strategyCfg: StrategyConfig
+  ) => {
+    const normalized = normalizeFyersSymbol(rawSymbol);
+    const snapshot: StrategyConfig = { ...DEFAULT_STRATEGY_CONFIG, ...strategyCfg };
+    setPerIndexConfigs((prev) => {
+      const next = { ...prev, [normalized]: snapshot };
+      try {
+        const key = userId
+          ? `${PER_INDEX_CONFIGS_KEY}_${userId}`
+          : PER_INDEX_CONFIGS_KEY;
+        window.localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    if (userId) {
+      void fetch('/api/user/index-strategy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ symbol: normalized, config: snapshot }),
+      }).catch(() => {
+        // Keep local copy
+      });
+    }
+    setSavedConfig(snapshot);
+    setJustSavedConfig(true);
+    toast.success(`Strategy attached to ${normalized}.`);
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      setJustSavedConfig(false);
+    }, 2200);
+  };
+
+  const handleRemoveAttachedStrategy = (rawSymbol: string) => {
+    const normalized = normalizeFyersSymbol(rawSymbol);
+    setPerIndexConfigs((prev) => {
+      const next = { ...prev };
+      delete next[normalized];
+      try {
+        const key = userId
+          ? `${PER_INDEX_CONFIGS_KEY}_${userId}`
+          : PER_INDEX_CONFIGS_KEY;
+        window.localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+    if (userId) {
+      const params = new URLSearchParams({ symbol: normalized });
+      void fetch(`/api/user/index-strategy?${params.toString()}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      }).catch(() => {
+        // ignore
+      });
+    }
+    toast.info(`Detached custom strategy for ${normalized}.`);
+  };
 
   const handleSaveConfig = () => {
     try {
@@ -739,16 +875,31 @@ export default function App() {
     (fyersFeed.status?.authenticated ? 1 : 0) +
     (telegramAlerts.isArmedForLive ? 1 : 0);
 
-  // Automatic F&O Futures Lot Size & Option Strike Step resolver for the active Strategy Lab symbol
-  const activeLabSymbol =
+  // Automatic F&O Futures Lot Size, Option Strike Step & Per-Index Attached Strategy loader
+  const activeLabSymbol = normalizeFyersSymbol(
     selectedScenarioId === 'fyers_live'
       ? fyersFeed.activeSymbol
-      : 'NSE:NIFTY50-INDEX';
+      : 'NSE:NIFTY50-INDEX'
+  );
   const [labInstrumentMeta, setLabInstrumentMeta] = useState<InstrumentMeta>(
     () => getFallbackInstrumentMeta(activeLabSymbol)
   );
   const [loadingLabLotSize, setLoadingLabLotSize] = useState(false);
   const lastAutoLotSymbolRef = useRef<string | null>(null);
+  const lastAppliedAttachedSymbolRef = useRef<string | null>(null);
+
+  // Auto-load attached per-index strategy whenever user switches active index/symbol
+  useEffect(() => {
+    const attached = perIndexConfigs[activeLabSymbol];
+    if (attached && lastAppliedAttachedSymbolRef.current !== activeLabSymbol) {
+      lastAppliedAttachedSymbolRef.current = activeLabSymbol;
+      const merged = { ...DEFAULT_STRATEGY_CONFIG, ...attached };
+      setConfig(merged);
+      setSavedConfig(merged);
+    } else if (!attached) {
+      lastAppliedAttachedSymbolRef.current = activeLabSymbol;
+    }
+  }, [activeLabSymbol, perIndexConfigs]);
 
   useEffect(() => {
     const fallback = getFallbackInstrumentMeta(activeLabSymbol);
@@ -771,7 +922,6 @@ export default function App() {
           );
         }
       } else {
-        // Same symbol: update if live Fyers master returned a different lot size than static fallback
         setConfig((prev) =>
           prev.lotSize === fallback.lotSize && meta.lotSize !== fallback.lotSize
             ? { ...prev, lotSize: meta.lotSize }
@@ -813,6 +963,140 @@ export default function App() {
       cancelled = true;
     };
   }, [activeLabSymbol, userId]);
+
+  // Real-time Paper Wallet Live Balance, Open MTM & Auto Risk-Based Lot Calculation
+  const todayIstDate = getTodayIstYYYYMMDD();
+  const walletMetrics = useMemo(() => {
+    const closedPositions = orderJournal.positions.filter(
+      (p) => p.status === 'CLOSED'
+    );
+    const openPositions = orderJournal.positions.filter(
+      (p) => p.status === 'OPEN'
+    );
+
+    const realizedPnl = closedPositions.reduce(
+      (sum, p) => sum + (Number.isFinite(p.pnlRupees) ? p.pnlRupees : 0),
+      0
+    );
+    const todayRealizedPnl = closedPositions
+      .filter((p) => p.date === todayIstDate)
+      .reduce(
+        (sum, p) => sum + (Number.isFinite(p.pnlRupees) ? p.pnlRupees : 0),
+        0
+      );
+
+    // Live Open MTM: mark open positions live using incoming Fyers tick (or live session open trade)
+    const liveSpot = fyersFeed.latestQuote?.ltp ?? null;
+    const deltaFactor =
+      config.instrumentType === 'NIFTY_ATM_OPT'
+        ? config.optionDeltaEstimate || 0.5
+        : 1;
+
+    let liveOpenMtm = 0;
+    let activeOpenCount = openPositions.length;
+
+    if (openPositions.length > 0) {
+      for (const pos of openPositions) {
+        // If this open position matches our actively streaming symbol, compute live tick-by-tick MTM
+        const matchesLiveUnderlying =
+          liveSpot !== null &&
+          fyersFeed.isStreaming &&
+          (pos.symbol.includes(labInstrumentMeta.underlying) ||
+            pos.symbol === fyersFeed.activeSymbol);
+
+        if (matchesLiveUnderlying && liveSpot !== null) {
+          const pts =
+            pos.direction === 'LONG'
+              ? liveSpot - pos.avgEntryPrice
+              : pos.avgEntryPrice - liveSpot;
+          liveOpenMtm += Math.round(pts * pos.qty * deltaFactor);
+        } else {
+          liveOpenMtm += Number.isFinite(pos.pnlRupees) ? pos.pnlRupees : 0;
+        }
+      }
+    } else if (selectedScenarioId === 'fyers_live' && result.trades.length > 0) {
+      const lastTrade = result.trades[result.trades.length - 1];
+      if (lastTrade.exitReason === 'OPEN') {
+        activeOpenCount = 1;
+        const mark = liveSpot ?? lastCandle?.close ?? lastTrade.entryPrice;
+        const pts =
+          lastTrade.direction === 'LONG'
+            ? mark - lastTrade.entryPrice
+            : lastTrade.entryPrice - mark;
+        liveOpenMtm = Math.round(
+          pts * config.lotSize * config.lots * deltaFactor
+        );
+      }
+    }
+
+    const liveBalance =
+      paperWalletCtrl.wallet.startingCapital + realizedPnl + liveOpenMtm;
+
+    return {
+      realizedPnl,
+      todayRealizedPnl,
+      liveOpenMtm,
+      liveBalance,
+      activeOpenCount,
+    };
+  }, [
+    orderJournal.positions,
+    todayIstDate,
+    fyersFeed.latestQuote?.ltp,
+    fyersFeed.isStreaming,
+    fyersFeed.activeSymbol,
+    labInstrumentMeta.underlying,
+    config.instrumentType,
+    config.optionDeltaEstimate,
+    config.lotSize,
+    config.lots,
+    selectedScenarioId,
+    result.trades,
+    lastCandle?.close,
+    paperWalletCtrl.wallet.startingCapital,
+  ]);
+
+  const lotCalculation = useMemo(
+    () =>
+      calculateRiskBasedLots({
+        startingCapital: paperWalletCtrl.wallet.startingCapital,
+        liveEquity: walletMetrics.liveBalance,
+        riskMode: paperWalletCtrl.wallet.riskMode,
+        riskPerTradeRupees: paperWalletCtrl.wallet.riskPerTradeRupees,
+        riskPerTradePct: paperWalletCtrl.wallet.riskPerTradePct,
+        maxLotsCap: paperWalletCtrl.wallet.maxLotsCap,
+        indexStopLossPoints: config.stopLossPoints,
+        optionDelta: config.optionDeltaEstimate,
+        isOptionBuying: config.instrumentType === 'NIFTY_ATM_OPT',
+        lotSize: config.lotSize,
+        optionLtp: liveOptionInfo?.ltp ?? null,
+      }),
+    [
+      paperWalletCtrl.wallet,
+      walletMetrics.liveBalance,
+      config.stopLossPoints,
+      config.optionDeltaEstimate,
+      config.instrumentType,
+      config.lotSize,
+      liveOptionInfo?.ltp,
+    ]
+  );
+
+  // Auto-apply calculated lots when Auto-Size Lots is enabled in Paper Wallet Risk Management
+  useEffect(() => {
+    if (!paperWalletCtrl.wallet.autoSizeLots) return;
+    if (config.lots !== lotCalculation.recommendedLots) {
+      setConfig((prev) =>
+        prev.lots === lotCalculation.recommendedLots
+          ? prev
+          : { ...prev, lots: lotCalculation.recommendedLots }
+      );
+    }
+  }, [
+    paperWalletCtrl.wallet.autoSizeLots,
+    lotCalculation.recommendedLots,
+    config.lots,
+  ]);
 
   const handleSignOut = async () => {
     fyersFeed.stopStream();
@@ -1077,6 +1361,10 @@ export default function App() {
           liveTick={fyersFeed.latestQuote}
           telegramArmed={telegramAlerts.isArmedForLive}
           telegramDestinationsCount={telegramAlerts.activeDestinationCount}
+          paperWalletBalance={walletMetrics.liveBalance}
+          liveOpenMtm={walletMetrics.liveOpenMtm}
+          openPositionsCount={walletMetrics.activeOpenCount}
+          onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
         />
 
         <main className="flex-1 w-full max-w-[1400px] mx-auto px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-20 lg:pb-8 space-y-5 sm:space-y-6">
@@ -1231,6 +1519,29 @@ export default function App() {
                 feed={fyersFeed}
                 isLiveModeActive={selectedScenarioId === 'fyers_live'}
                 onOpenIntegrations={() => handleOpenIntegrationsTab('brokers')}
+              />
+
+              {/* Vertical Top-of-Page Strategy Configuration (First visible configuration on page) */}
+              <StrategyControls
+                config={config}
+                onChange={setConfig}
+                onResetDefaults={() => setConfig(DEFAULT_STRATEGY_CONFIG)}
+                hasUnsavedChanges={hasUnsavedConfig}
+                justSaved={justSavedConfig}
+                onSave={handleSaveConfig}
+                onDiscard={handleDiscardConfig}
+                instrumentMeta={labInstrumentMeta}
+                loadingLotSize={loadingLabLotSize}
+                activeSymbol={activeLabSymbol}
+                isAttachedToActiveSymbol={Boolean(
+                  perIndexConfigs[activeLabSymbol]
+                )}
+                perIndexConfigs={perIndexConfigs}
+                onAttachToSymbol={handleAttachStrategyToSymbol}
+                onRemoveAttachedSymbol={handleRemoveAttachedStrategy}
+                lotCalculation={lotCalculation}
+                autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
+                onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
               />
 
               {/* 4-Column Session KPI Strip */}
@@ -1425,8 +1736,8 @@ export default function App() {
                 </section>
               )}
 
-              {/* Chart & Strategy Controls Grid */}
-              <section className="grid grid-cols-1 xl:grid-cols-[1fr_308px] gap-6 items-start">
+              {/* Full-Width Chart, Live Options Buy Desk, Equity Curve & Ledger (Strategy Controls moved cleanly to top) */}
+              <section className="space-y-6">
                 <div className="space-y-6 min-w-0">
                   <ChartErrorBoundary
                     resetKey={`${activeScenario.id}:${activeScenario.name}:${labMode}:${
@@ -1472,6 +1783,14 @@ export default function App() {
                     fyersAuthenticated={Boolean(
                       fyersFeed.status?.authenticated
                     )}
+                    isLiveStreaming={fyersFeed.isStreaming}
+                    streamedOptionQuote={fyersFeed.latestOptionQuote}
+                    onRegisterStreamOptionSymbol={
+                      fyersFeed.setStreamedOptionSymbol
+                    }
+                    onLiveOptionChange={setLiveOptionInfo}
+                    lotCalculation={lotCalculation}
+                    onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
                     onChangeConfig={setConfig}
                   />
 
@@ -1497,18 +1816,6 @@ export default function App() {
                     }
                   />
                 </div>
-
-                <StrategyControls
-                  config={config}
-                  onChange={setConfig}
-                  onResetDefaults={() => setConfig(DEFAULT_STRATEGY_CONFIG)}
-                  hasUnsavedChanges={hasUnsavedConfig}
-                  justSaved={justSavedConfig}
-                  onSave={handleSaveConfig}
-                  onDiscard={handleDiscardConfig}
-                  instrumentMeta={labInstrumentMeta}
-                  loadingLotSize={loadingLabLotSize}
-                />
               </section>
             </>
           )}
@@ -1525,6 +1832,12 @@ export default function App() {
               onDiscardConfig={handleDiscardConfig}
               userId={userId}
               serverSavedReports={serverSavedReports}
+              perIndexConfigs={perIndexConfigs}
+              onAttachStrategyToSymbol={handleAttachStrategyToSymbol}
+              onRemoveAttachedStrategy={handleRemoveAttachedStrategy}
+              lotCalculation={lotCalculation}
+              autoSizeLotsEnabled={paperWalletCtrl.wallet.autoSizeLots}
+              onOpenPaperWallet={() => setIsPaperWalletOpen(true)}
               onSaveBacktestToCalendar={(trades, meta) => {
                 const entries = tradeRecordsToPaperEntries(trades, {
                   symbol: meta.symbol,
@@ -1652,6 +1965,30 @@ export default function App() {
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onImport={handleImportCandles}
+      />
+
+      <PaperWalletModal
+        isOpen={isPaperWalletOpen}
+        onClose={() => setIsPaperWalletOpen(false)}
+        wallet={paperWalletCtrl.wallet}
+        onUpdateWallet={paperWalletCtrl.updateWallet}
+        onResetWallet={() => {
+          paperWalletCtrl.resetWalletDefaults();
+          toast.info('Paper Wallet & Risk defaults restored.');
+        }}
+        realizedPnl={walletMetrics.realizedPnl}
+        todayRealizedPnl={walletMetrics.todayRealizedPnl}
+        liveOpenMtm={walletMetrics.liveOpenMtm}
+        openPositionsCount={walletMetrics.activeOpenCount}
+        config={config}
+        instrumentMeta={labInstrumentMeta}
+        lotCalculation={lotCalculation}
+        liveOptionLtp={liveOptionInfo?.ltp ?? null}
+        canEditStrategy={isAdmin}
+        onApplyRecommendedLots={(lots) => {
+          setConfig((prev) => ({ ...prev, lots }));
+          toast.success(`Applied ${lots} risk-sized lots (${lots * config.lotSize} qty).`);
+        }}
       />
 
       {/* Trust & Safety Modal: Confirm Switching to LIVE Mode */}

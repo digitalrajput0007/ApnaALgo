@@ -1,20 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Candle } from '../types/strategy';
-import { normalizeFyersSymbol } from '../utils/fyersSymbols';
-
-export interface FyersStatus {
-  configured: boolean;
-  appId: string | null;
-  authenticated: boolean;
-  profile: {
-    name?: string;
-    fy_id?: string;
-    email_id?: string;
-  } | null;
-  autoRefreshEnabled?: boolean;
-  callbackUrl: string;
-  istToday: string;
-}
+import {
+  FYERS_INDEX_PRESETS,
+  normalizeFyersSymbol,
+} from '../utils/fyersSymbols';
 
 export interface FyersQuoteTick {
   symbol: string;
@@ -29,10 +18,40 @@ export interface FyersQuoteTick {
   epoch: number;
   istDate?: string;
   istTime: string;
-  istTimeSec?: string;
+  istTimeSec: string;
 }
 
-interface UseFyersLiveFeedOptions {
+export interface FyersActiveStreamMeta {
+  active: boolean;
+  symbol: string;
+  optionSymbol: string | null;
+  startedAt: number | null;
+  date: string;
+}
+
+export interface FyersStatus {
+  configured: boolean;
+  appId: string | null;
+  authenticated: boolean;
+  profile: {
+    name?: string;
+    fy_id?: string;
+    email_id?: string;
+  } | null;
+  connectedAt?: number | null;
+  lastRefreshedAt?: number | null;
+  tokenStale?: boolean;
+  hasPin?: boolean;
+  pinSource?: 'account' | 'server' | null;
+  autoRefreshEnabled?: boolean;
+  callbackUrl: string;
+  istToday: string;
+  activeStream?: FyersActiveStreamMeta | null;
+}
+
+export const FYERS_SYMBOL_OPTIONS = FYERS_INDEX_PRESETS.map((p) => p.symbol);
+
+export interface UseFyersLiveFeedOptions {
   authUserId?: string | null;
   onLoadCandles: (candles: Candle[], label: string, subtitle: string) => void;
   onLiveTick: (tick: FyersQuoteTick, symbol: string) => void;
@@ -47,29 +66,55 @@ export interface FyersLiveFeedController {
   customSymbol: string;
   setCustomSymbol: (sym: string) => void;
   activeSymbol: string;
+  date: string;
+  setDate: (d: string) => void;
   tradeDate: string;
-  setTradeDate: (date: string) => void;
+  setTradeDate: (d: string) => void;
+  loadingHistory: boolean;
   fetchingHistory: boolean;
-  isStreaming: boolean;
-  latestQuote: FyersQuoteTick | null;
   lastDataSource: 'database' | 'fyers' | null;
+  isStreaming: boolean;
+  streamTransport: 'ws' | 'http' | null;
+  latestQuote: FyersQuoteTick | null;
+  latestOptionQuote: FyersQuoteTick | null;
+  streamedOptionSymbol: string | null;
+  setStreamedOptionSymbol: (optionSymbol: string | null) => void;
   errorMsg: string | null;
+  setErrorMsg: (msg: string | null) => void;
+  infoMsg: string | null;
+  setInfoMsg: (msg: string | null) => void;
+  refreshStatus: () => Promise<void>;
   handleConnect: () => Promise<void>;
   handleDisconnect: () => Promise<void>;
+  saveFyersPin: (pin: string | null) => Promise<{
+    ok: boolean;
+    refreshedNow?: boolean;
+    error?: string;
+  }>;
+  fetchHistoryForDate: (
+    targetDate?: string,
+    targetSymbol?: string
+  ) => Promise<void>;
   handleFetchHistory: (
-    overrideSymbol?: string,
-    overrideDate?: string,
-    forceRefresh?: boolean
+    targetDate?: string,
+    targetSymbol?: string
   ) => Promise<void>;
   toggleStream: () => void;
   stopStream: () => void;
-  refreshStatus: () => Promise<void>;
 }
 
-/**
- * Root-level Fyers live feed hook so WebSocket / HTTP quote streaming persists
- * across all tab switches until the user explicitly clicks Stop Live Stream or Disconnect.
- */
+interface StreamStateResponse {
+  active: boolean;
+  symbol: string;
+  optionSymbol: string | null;
+  startedAt: number | null;
+  date: string;
+  latestQuote: FyersQuoteTick | null;
+  latestOptionQuote: FyersQuoteTick | null;
+  candles: Candle[];
+  lastError: string | null;
+}
+
 export function useFyersLiveFeed({
   authUserId = null,
   onLoadCandles,
@@ -77,177 +122,435 @@ export function useFyersLiveFeed({
   onHistorySync,
 }: UseFyersLiveFeedOptions): FyersLiveFeedController {
   const [status, setStatus] = useState<FyersStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(true);
-  const [symbol, setSymbol] = useState('NSE:NIFTY50-INDEX');
-  const [customSymbol, setCustomSymbol] = useState('');
-  const [tradeDate, setTradeDate] = useState('');
-  const [fetchingHistory, setFetchingHistory] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [latestQuote, setLatestQuote] = useState<FyersQuoteTick | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState<boolean>(true);
+  const [symbol, setSymbol] = useState<string>('NSE:NIFTY50-INDEX');
+  const [customSymbol, setCustomSymbol] = useState<string>('');
+  const [date, setDate] = useState<string>('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [lastDataSource, setLastDataSource] = useState<
     'database' | 'fyers' | null
   >(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamTransport, setStreamTransport] = useState<'ws' | 'http' | null>(
+    null
+  );
+  const [latestQuote, setLatestQuote] = useState<FyersQuoteTick | null>(null);
+  const [latestOptionQuote, setLatestOptionQuote] =
+    useState<FyersQuoteTick | null>(null);
+  const [streamedOptionSymbol, setStreamedOptionSymbolState] = useState<
+    string | null
+  >(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const httpPollRef = useRef<number | null>(null);
-  const wsFallbackTimerRef = useRef<number | null>(null);
-  const streamingIntentRef = useRef<boolean>(false);
-  const fetchSeqRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const isStreamingRef = useRef<boolean>(false);
+  const activeSymbolRef = useRef<string>('NSE:NIFTY50-INDEX');
+  const streamedOptionSymbolRef = useRef<string | null>(null);
+  const mountedRef = useRef<boolean>(true);
 
-  // Keep latest callbacks in refs so active streams never depend on callback identity
-  const onLoadCandlesRef = useRef(onLoadCandles);
   const onLiveTickRef = useRef(onLiveTick);
+  onLiveTickRef.current = onLiveTick;
   const onHistorySyncRef = useRef(onHistorySync);
-  useEffect(() => {
-    onLoadCandlesRef.current = onLoadCandles;
-    onLiveTickRef.current = onLiveTick;
-    onHistorySyncRef.current = onHistorySync;
-  }, [onLoadCandles, onLiveTick, onHistorySync]);
+  onHistorySyncRef.current = onHistorySync;
+  const onLoadCandlesRef = useRef(onLoadCandles);
+  onLoadCandlesRef.current = onLoadCandles;
 
   const activeSymbol = normalizeFyersSymbol(customSymbol.trim() || symbol);
+  activeSymbolRef.current = activeSymbol;
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/fyers/status', { credentials: 'include' });
-      if (!resp.ok) throw new Error('Unable to reach server Fyers status');
-      const data = (await resp.json()) as FyersStatus;
-      setStatus(data);
-      setTradeDate((prev) => prev || data.istToday);
-      setErrorMsg(null);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Status check failed');
-    } finally {
-      setLoadingStatus(false);
+  const detachLocalTransport = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
-  }, []);
-
-  useEffect(() => {
-    void refreshStatus();
-  }, [refreshStatus]);
-
-  // Listen for OAuth popup postMessage completion (works on AI Studio & custom AWS VPS domains)
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const origin = event.origin;
-      if (
-        origin !== window.location.origin &&
-        !origin.endsWith('.run.app') &&
-        !origin.includes('localhost')
-      ) {
-        return;
+    if (wsRef.current) {
+      const ws = wsRef.current;
+      wsRef.current = null;
+      try {
+        ws.close();
+      } catch {
+        // ignore
       }
-      if (event.data?.type === 'FYERS_AUTH_SUCCESS') {
-        void refreshStatus();
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [refreshStatus]);
-
-  const stopStream = useCallback(() => {
-    streamingIntentRef.current = false;
-    if (wsFallbackTimerRef.current !== null) {
-      window.clearTimeout(wsFallbackTimerRef.current);
-      wsFallbackTimerRef.current = null;
     }
     if (httpPollRef.current !== null) {
       window.clearInterval(httpPollRef.current);
       httpPollRef.current = null;
     }
-    if (wsRef.current) {
-      try {
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ action: 'unsubscribe' }));
-        }
-        wsRef.current.close();
-      } catch {
-        // ignore close error
-      }
-      wsRef.current = null;
-    }
-    setIsStreaming(false);
+    setStreamTransport(null);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      stopStream();
+  const startHttpStatePoll = useCallback(() => {
+    if (httpPollRef.current !== null) {
+      window.clearInterval(httpPollRef.current);
+      httpPollRef.current = null;
+    }
+    setStreamTransport('http');
+    const poll = async () => {
+      if (!isStreamingRef.current || !mountedRef.current) return;
+      try {
+        const resp = await fetch('/api/fyers/stream/state', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!resp.ok) return;
+        const snap = (await resp.json()) as StreamStateResponse;
+        if (!mountedRef.current) return;
+        if (!snap.active) {
+          isStreamingRef.current = false;
+          setIsStreaming(false);
+          detachLocalTransport();
+          return;
+        }
+        if (snap.latestQuote) {
+          setLatestQuote(snap.latestQuote);
+          onLiveTickRef.current(snap.latestQuote, snap.symbol);
+        }
+        if (snap.latestOptionQuote) {
+          setLatestOptionQuote(snap.latestOptionQuote);
+        }
+        if (snap.lastError) {
+          setErrorMsg(snap.lastError);
+        } else {
+          setErrorMsg(null);
+        }
+      } catch {
+        // Retry on next interval
+      }
     };
-  }, [stopStream]);
 
-  // Reset active stream & refresh per-user broker status whenever the SaaS user changes
+    void poll();
+    httpPollRef.current = window.setInterval(() => {
+      void poll();
+    }, 1500);
+  }, [detachLocalTransport]);
+
+  const attachWebSocketListener = useCallback(() => {
+    detachLocalTransport();
+    if (!isStreamingRef.current || !mountedRef.current) return;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/fyers`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      const fallbackTimeout = window.setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN && isStreamingRef.current) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          startHttpStatePoll();
+        }
+      }, 3000);
+
+      ws.onopen = () => {
+        window.clearTimeout(fallbackTimeout);
+        if (!mountedRef.current) {
+          ws.close();
+          return;
+        }
+        setStreamTransport('ws');
+        setErrorMsg(null);
+        if (streamedOptionSymbolRef.current) {
+          try {
+            ws.send(
+              JSON.stringify({
+                action: 'set_option',
+                optionSymbol: streamedOptionSymbolRef.current,
+              })
+            );
+          } catch {
+            // ignore
+          }
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!mountedRef.current) return;
+        try {
+          const msg = JSON.parse(event.data) as {
+            type?: string;
+            active?: boolean;
+            symbol?: string;
+            optionSymbol?: string | null;
+            date?: string;
+            data?: FyersQuoteTick;
+            candles?: Candle[];
+            message?: string;
+          };
+
+          if (msg.type === 'stream_state') {
+            if (msg.active === false) {
+              isStreamingRef.current = false;
+              setIsStreaming(false);
+              detachLocalTransport();
+            } else if (msg.active === true && msg.symbol) {
+              isStreamingRef.current = true;
+              setIsStreaming(true);
+            }
+          } else if (msg.type === 'quote' && msg.data) {
+            setLatestQuote(msg.data);
+            setErrorMsg(null);
+            onLiveTickRef.current(msg.data, msg.data.symbol || activeSymbolRef.current);
+          } else if (msg.type === 'option_quote' && msg.data) {
+            setLatestOptionQuote(msg.data);
+          } else if (msg.type === 'history_sync' && Array.isArray(msg.candles)) {
+            onHistorySyncRef.current(
+              msg.candles,
+              msg.symbol || activeSymbolRef.current,
+              msg.date || ''
+            );
+          } else if (msg.type === 'error' && msg.message) {
+            setErrorMsg(msg.message);
+          }
+        } catch {
+          // Ignore malformed frames
+        }
+      };
+
+      ws.onerror = () => {
+        window.clearTimeout(fallbackTimeout);
+        if (isStreamingRef.current && mountedRef.current) {
+          startHttpStatePoll();
+        }
+      };
+
+      ws.onclose = () => {
+        window.clearTimeout(fallbackTimeout);
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+        // If server stream is still active, auto-reconnect seamlessly
+        if (isStreamingRef.current && mountedRef.current) {
+          reconnectTimerRef.current = window.setTimeout(() => {
+            if (isStreamingRef.current && mountedRef.current) {
+              attachWebSocketListener();
+            }
+          }, 2500);
+        }
+      };
+    } catch {
+      startHttpStatePoll();
+    }
+  }, [detachLocalTransport, startHttpStatePoll]);
+
+  const hydrateRunningServerStream = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/fyers/stream/state', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!resp.ok || !mountedRef.current) return;
+      const snap = (await resp.json()) as StreamStateResponse;
+      if (!mountedRef.current) return;
+
+      if (snap.active) {
+        if (FYERS_SYMBOL_OPTIONS.includes(snap.symbol)) {
+          setSymbol(snap.symbol);
+          setCustomSymbol('');
+        } else if (snap.symbol) {
+          setCustomSymbol(snap.symbol);
+        }
+        activeSymbolRef.current = snap.symbol;
+        if (snap.date) setDate(snap.date);
+        if (snap.candles && snap.candles.length > 0) {
+          onHistorySyncRef.current(snap.candles, snap.symbol, snap.date);
+        }
+        if (snap.latestQuote) {
+          setLatestQuote(snap.latestQuote);
+        }
+        if (snap.latestOptionQuote) {
+          setLatestOptionQuote(snap.latestOptionQuote);
+        }
+        isStreamingRef.current = true;
+        setIsStreaming(true);
+        setInfoMsg(
+          `Continuous server stream active for ${snap.symbol} — keeps running even if you refresh or close this tab.`
+        );
+        attachWebSocketListener();
+      } else {
+        isStreamingRef.current = false;
+        setIsStreaming(false);
+        detachLocalTransport();
+      }
+    } catch {
+      // Ignore transient network errors
+    }
+  }, [attachWebSocketListener, detachLocalTransport]);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/fyers/status', {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!resp.ok) return;
+      const data = (await resp.json()) as FyersStatus;
+      if (!mountedRef.current) return;
+      setStatus(data);
+      if (data.istToday) {
+        setDate((prev) => prev || data.istToday);
+      }
+
+      // Auto-reattach if server-side persistent stream is already active!
+      if (data.authenticated && data.activeStream?.active && !isStreamingRef.current) {
+        void hydrateRunningServerStream();
+      }
+    } catch {
+      // Ignore transient network errors
+    } finally {
+      if (mountedRef.current) {
+        setLoadingStatus(false);
+      }
+    }
+  }, [hydrateRunningServerStream]);
+
   useEffect(() => {
-    stopStream();
-    setLatestQuote(null);
-    setErrorMsg(null);
+    mountedRef.current = true;
     if (!authUserId) {
+      isStreamingRef.current = false;
+      setIsStreaming(false);
+      detachLocalTransport();
       setStatus(null);
       setLoadingStatus(false);
+      setLatestQuote(null);
+      setLatestOptionQuote(null);
+      setErrorMsg(null);
+      setInfoMsg(null);
       return;
     }
     setLoadingStatus(true);
     void refreshStatus();
-  }, [authUserId, refreshStatus, stopStream]);
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'FYERS_AUTH_SUCCESS') {
+        setErrorMsg(null);
+        setInfoMsg('Fyers account connected.');
+        void refreshStatus();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener('message', onMessage);
+      // IMPORTANT: Only detach local WS/poll listener on unmount/refresh — NEVER stop server stream!
+      detachLocalTransport();
+    };
+  }, [authUserId, refreshStatus, detachLocalTransport]);
 
   const handleConnect = useCallback(async () => {
     setErrorMsg(null);
+    setInfoMsg(null);
     try {
       const resp = await fetch('/api/fyers/auth/url', {
         credentials: 'include',
       });
       const data = (await resp.json()) as { url?: string; error?: string };
       if (!resp.ok || !data.url) {
-        throw new Error(data.error || 'Failed to construct Fyers OAuth URL');
+        setErrorMsg(data.error || 'Could not generate Fyers login URL.');
+        return;
       }
+
       const popup = window.open(
         data.url,
         'fyers_oauth_popup',
-        'width=600,height=720'
+        'width=560,height=720,menubar=no,toolbar=no,status=no'
       );
+
       if (!popup) {
-        setErrorMsg(
-          'Popup was blocked by your browser. Allow popups for this site to sign in with Fyers.'
-        );
+        window.location.href = data.url;
+        return;
       }
+
+      const pollTimer = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(pollTimer);
+          void refreshStatus();
+        }
+      }, 600);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Fyers login error');
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Failed to initiate Fyers login'
+      );
     }
-  }, []);
+  }, [refreshStatus]);
+
+  const stopStream = useCallback(() => {
+    isStreamingRef.current = false;
+    setIsStreaming(false);
+    detachLocalTransport();
+    setInfoMsg('Live server stream stopped.');
+    void fetch('/api/fyers/stream/stop', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {
+      // ignore
+    });
+  }, [detachLocalTransport]);
 
   const handleDisconnect = useCallback(async () => {
     stopStream();
+    try {
+      await fetch('/api/fyers/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // ignore
+    }
     setLatestQuote(null);
-    await fetch('/api/fyers/logout', {
-      method: 'POST',
-      credentials: 'include',
-    });
+    setLatestOptionQuote(null);
+    setInfoMsg('Disconnected from Fyers.');
     await refreshStatus();
   }, [refreshStatus, stopStream]);
 
-  const handleFetchHistory = useCallback(
+  const saveFyersPin = useCallback(
     async (
-      overrideSymbol?: string,
-      overrideDate?: string,
-      forceRefresh = false
-    ) => {
-      const seq = ++fetchSeqRef.current;
-      setErrorMsg(null);
-      setFetchingHistory(true);
+      pin: string | null
+    ): Promise<{ ok: boolean; refreshedNow?: boolean; error?: string }> => {
       try {
-        const targetSymbol = normalizeFyersSymbol(
-          overrideSymbol !== undefined ? overrideSymbol : activeSymbol
-        );
-        const targetDate =
-          overrideDate !== undefined
-            ? overrideDate
-            : tradeDate || status?.istToday || '';
-        const params = new URLSearchParams({
-          symbol: targetSymbol,
-          date: targetDate,
+        const resp = await fetch('/api/fyers/pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(pin ? { pin } : { clear: true }),
         });
-        if (forceRefresh) {
-          params.set('refresh', '1');
+        const data = (await resp.json()) as {
+          ok?: boolean;
+          refreshedNow?: boolean;
+          error?: string;
+        };
+        if (!resp.ok || !data.ok) {
+          return { ok: false, error: data.error || 'Could not save PIN.' };
         }
+        await refreshStatus();
+        return { ok: true, refreshedNow: data.refreshedNow };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : 'Network error saving PIN.',
+        };
+      }
+    },
+    [refreshStatus]
+  );
+
+  const fetchHistoryForDate = useCallback(
+    async (targetDate?: string, targetSymbol?: string) => {
+      const sym = normalizeFyersSymbol(targetSymbol || activeSymbolRef.current);
+      const dt = targetDate || date || status?.istToday || '';
+      setErrorMsg(null);
+      setInfoMsg(null);
+      setLoadingHistory(true);
+      try {
+        const params = new URLSearchParams({ symbol: sym });
+        if (dt) params.set('date', dt);
         const resp = await fetch(`/api/fyers/history?${params.toString()}`, {
           credentials: 'include',
           cache: 'no-store',
@@ -259,231 +562,149 @@ export function useFyersLiveFeed({
           source?: 'database' | 'fyers';
           error?: string;
         };
-        // Ignore stale responses if the user rapidly switched dates/symbols
-        if (seq !== fetchSeqRef.current) return;
-
-        if (!resp.ok || !data.candles) {
-          if (resp.status === 401) {
-            void refreshStatus();
-          }
-          throw new Error(data.error || 'Failed to fetch Fyers 5m candles');
+        if (!resp.ok) {
+          setErrorMsg(data.error || 'Failed to load Fyers historical candles.');
+          return;
         }
-        const resolvedSymbol = data.symbol || targetSymbol;
-        const resolvedDate = data.date || targetDate;
-        const sourceTag = data.source === 'database' ? 'database' : 'fyers';
-        setLastDataSource(sourceTag);
-
-        if (data.candles.length === 0) {
+        const candles = data.candles || [];
+        if (candles.length === 0) {
           setErrorMsg(
-            `No regular-session 5m candles returned for ${resolvedSymbol} on ${resolvedDate} (market holiday, weekend, or pre-open).`
+            `No 5-minute candles returned for ${sym} on ${
+              data.date || dt
+            }. Try a recent NSE trading weekday (Mon–Fri).`
           );
           return;
         }
-        const sourceLabel =
-          sourceTag === 'database'
-            ? 'loaded from local DB'
-            : 'fetched from Fyers & saved to DB';
+        setLastDataSource(data.source === 'database' ? 'database' : 'fyers');
+        const sourceTag =
+          data.source === 'database' ? 'Loaded from local DB' : 'Synced from Fyers';
         onLoadCandlesRef.current(
-          data.candles,
-          `Fyers Live: ${resolvedSymbol}`,
-          `${data.candles.length} real 5-min bars ${sourceLabel} (${resolvedDate})`
+          candles,
+          `Fyers: ${data.symbol || sym} (${data.date || dt})`,
+          `${candles.length} real 5-min bars · ${sourceTag} · ${data.date || dt}`
+        );
+        setInfoMsg(
+          `Loaded ${candles.length} 5-min bars for ${data.symbol || sym} (${
+            data.date || dt
+          }) · ${sourceTag}.`
         );
       } catch (err) {
-        if (seq !== fetchSeqRef.current) return;
         setErrorMsg(
-          err instanceof Error ? err.message : 'History fetch failed'
+          err instanceof Error ? err.message : 'Network error loading Fyers data'
         );
       } finally {
-        if (seq === fetchSeqRef.current) {
-          setFetchingHistory(false);
-        }
+        setLoadingHistory(false);
       }
     },
-    [activeSymbol, refreshStatus, status?.istToday, tradeDate]
+    [date, status?.istToday]
   );
 
-  const startHttpQuoteFallback = useCallback(
-    (targetSymbol: string, targetDate: string) => {
-      if (!streamingIntentRef.current || httpPollRef.current !== null) return;
-      let lastSyncedBucket = '';
+  const setStreamedOptionSymbol = useCallback((nextOptSymbol: string | null) => {
+    const clean =
+      typeof nextOptSymbol === 'string' && nextOptSymbol.trim()
+        ? nextOptSymbol.trim().toUpperCase()
+        : null;
+    if (streamedOptionSymbolRef.current === clean) return;
+    streamedOptionSymbolRef.current = clean;
+    setStreamedOptionSymbolState(clean);
+    setLatestOptionQuote(null);
 
-      const pollOnce = async () => {
-        if (!streamingIntentRef.current) return;
-        try {
-          const qParams = new URLSearchParams({ symbol: targetSymbol });
-          const qResp = await fetch(`/api/fyers/quotes?${qParams.toString()}`, {
-            credentials: 'include',
-          });
-          const qData = (await qResp.json()) as FyersQuoteTick & {
-            error?: string;
-          };
-          if (!qResp.ok || typeof qData.ltp !== 'number') {
-            if (qResp.status === 401) {
-              setErrorMsg(qData.error || 'Fyers session expired. Reconnect.');
-              stopStream();
-              void refreshStatus();
-            }
-            return;
-          }
-          setLatestQuote(qData);
-          onLiveTickRef.current(qData, targetSymbol);
+    if (!isStreamingRef.current) return;
 
-          const [hh, mm] = (qData.istTime || '09:15').split(':').map(Number);
-          const bucket = `${String(hh).padStart(2, '0')}:${String(
-            Math.floor(mm / 5) * 5
-          ).padStart(2, '0')}`;
-          if (bucket !== lastSyncedBucket) {
-            lastSyncedBucket = bucket;
-            const hParams = new URLSearchParams({
-              symbol: targetSymbol,
-              date: targetDate,
-            });
-            const hResp = await fetch(
-              `/api/fyers/history?${hParams.toString()}`,
-              { credentials: 'include' }
-            );
-            const hData = (await hResp.json()) as {
-              candles?: Candle[];
-              date?: string;
-            };
-            if (hResp.ok && hData.candles && hData.candles.length > 0) {
-              onHistorySyncRef.current(
-                hData.candles,
-                targetSymbol,
-                hData.date || targetDate
-              );
-            }
-          }
-        } catch {
-          // Keep retrying on transient network blips
-        }
-      };
-
-      void pollOnce();
-      httpPollRef.current = window.setInterval(() => {
-        void pollOnce();
-      }, 1000);
-    },
-    [refreshStatus, stopStream]
-  );
-
-  const toggleStream = useCallback(() => {
-    if (streamingIntentRef.current) {
-      stopStream();
-      return;
-    }
-
-    setErrorMsg(null);
-    streamingIntentRef.current = true;
-    setIsStreaming(true);
-
-    const targetSymbol = activeSymbol;
-    const targetDate = status?.istToday || tradeDate;
-    let receivedWsQuote = false;
-
-    // 1. Immediately load today's complete 5-min bars
-    void (async () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
-        const hParams = new URLSearchParams({
-          symbol: targetSymbol,
-          date: targetDate,
-        });
-        const resp = await fetch(`/api/fyers/history?${hParams.toString()}`, {
-          credentials: 'include',
-        });
-        const data = (await resp.json()) as {
-          candles?: Candle[];
-          date?: string;
-        };
-        if (resp.ok && data.candles && data.candles.length > 0) {
-          onHistorySyncRef.current(
-            data.candles,
-            targetSymbol,
-            data.date || targetDate
-          );
-        }
-      } catch {
-        // Non-fatal; WS or fallback poll will sync
-      }
-    })();
-
-    // 2. Open WebSocket with automatic 1-second HTTP fallback
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/fyers`;
-
-    wsFallbackTimerRef.current = window.setTimeout(() => {
-      if (!receivedWsQuote && streamingIntentRef.current) {
-        startHttpQuoteFallback(targetSymbol, targetDate);
-      }
-    }, 2500);
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        ws.send(
+        wsRef.current.send(
           JSON.stringify({
-            action: 'subscribe',
-            symbol: targetSymbol,
-            date: targetDate,
+            action: 'set_option',
+            optionSymbol: clean,
           })
         );
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data) as {
-            type?: string;
-            data?: FyersQuoteTick;
-            candles?: Candle[];
-            symbol?: string;
-            date?: string;
-            message?: string;
-          };
-          if (msg.type === 'quote' && msg.data) {
-            receivedWsQuote = true;
-            if (wsFallbackTimerRef.current !== null) {
-              window.clearTimeout(wsFallbackTimerRef.current);
-              wsFallbackTimerRef.current = null;
-            }
-            if (httpPollRef.current !== null) {
-              window.clearInterval(httpPollRef.current);
-              httpPollRef.current = null;
-            }
-            setLatestQuote(msg.data);
-            onLiveTickRef.current(msg.data, targetSymbol);
-          } else if (msg.type === 'history_sync' && msg.candles) {
-            if (msg.candles.length > 0) {
-              onHistorySyncRef.current(
-                msg.candles,
-                msg.symbol || targetSymbol,
-                msg.date || targetDate
-              );
-            }
-          } else if (msg.type === 'error' && msg.message) {
-            setErrorMsg(msg.message);
-          }
-        } catch {
-          // Ignore non-JSON frame
-        }
-      };
-
-      ws.onerror = () => {
-        if (streamingIntentRef.current) {
-          startHttpQuoteFallback(targetSymbol, targetDate);
-        }
-      };
-
-      ws.onclose = () => {
-        if (streamingIntentRef.current) {
-          startHttpQuoteFallback(targetSymbol, targetDate);
-        }
-      };
-    } catch {
-      startHttpQuoteFallback(targetSymbol, targetDate);
+        return;
+      } catch {
+        // Fall through to HTTP endpoint
+      }
     }
-  }, [activeSymbol, startHttpQuoteFallback, status?.istToday, stopStream, tradeDate]);
+
+    void fetch('/api/fyers/stream/option-symbol', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ optionSymbol: clean }),
+    }).catch(() => {
+      // ignore
+    });
+  }, []);
+
+  const startPersistentStream = useCallback(
+    async (targetSymbol?: string) => {
+      const sym = normalizeFyersSymbol(targetSymbol || activeSymbolRef.current);
+      setErrorMsg(null);
+      setInfoMsg(`Starting continuous server stream for ${sym}...`);
+
+      try {
+        const resp = await fetch('/api/fyers/stream/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            symbol: sym,
+            optionSymbol: streamedOptionSymbolRef.current,
+          }),
+        });
+        const data = (await resp.json()) as StreamStateResponse & {
+          error?: string;
+        };
+        if (!resp.ok) {
+          setErrorMsg(data.error || 'Could not start live stream.');
+          return;
+        }
+        if (data.date) setDate(data.date);
+        if (data.candles && data.candles.length > 0) {
+          onHistorySyncRef.current(data.candles, data.symbol, data.date);
+        }
+        if (data.latestQuote) {
+          setLatestQuote(data.latestQuote);
+        }
+        if (data.latestOptionQuote) {
+          setLatestOptionQuote(data.latestOptionQuote);
+        }
+        isStreamingRef.current = true;
+        setIsStreaming(true);
+        setInfoMsg(
+          `Continuous server stream active for ${sym} — stays running across page refreshes until you click Stop.`
+        );
+        attachWebSocketListener();
+      } catch (err) {
+        setErrorMsg(
+          err instanceof Error ? err.message : 'Failed to start live stream.'
+        );
+      }
+    },
+    [attachWebSocketListener]
+  );
+
+  // If user switches symbol while server stream is running, update the persistent server stream cleanly
+  useEffect(() => {
+    if (!isStreamingRef.current) return;
+    if (!status?.authenticated) return;
+    const sym = activeSymbol;
+    if (latestQuote?.symbol && latestQuote.symbol === sym) return;
+    const timer = window.setTimeout(() => {
+      if (isStreamingRef.current) {
+        void startPersistentStream(sym);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSymbol]);
+
+  const toggleStream = useCallback(() => {
+    if (isStreamingRef.current) {
+      stopStream();
+    } else {
+      void startPersistentStream();
+    }
+  }, [stopStream, startPersistentStream]);
 
   return {
     status,
@@ -493,18 +714,30 @@ export function useFyersLiveFeed({
     customSymbol,
     setCustomSymbol,
     activeSymbol,
-    tradeDate,
-    setTradeDate,
-    fetchingHistory,
-    isStreaming,
-    latestQuote,
+    date,
+    setDate,
+    tradeDate: date,
+    setTradeDate: setDate,
+    loadingHistory,
+    fetchingHistory: loadingHistory,
     lastDataSource,
+    isStreaming,
+    streamTransport,
+    latestQuote,
+    latestOptionQuote,
+    streamedOptionSymbol,
+    setStreamedOptionSymbol,
     errorMsg,
+    setErrorMsg,
+    infoMsg,
+    setInfoMsg,
+    refreshStatus,
     handleConnect,
     handleDisconnect,
-    handleFetchHistory,
+    saveFyersPin,
+    fetchHistoryForDate,
+    handleFetchHistory: fetchHistoryForDate,
     toggleStream,
     stopStream,
-    refreshStatus,
   };
 }

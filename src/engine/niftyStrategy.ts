@@ -33,8 +33,9 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   stopAfterTargetHit: true,
   lotSize: 65,
   lots: 1,
-  instrumentType: 'NIFTY_FUT',
-  optionDeltaEstimate: 0.65,
+  instrumentType: 'NIFTY_ATM_OPT',
+  optionDeltaEstimate: 0.5,
+  optionExpiryPreference: 'auto',
   squareOffTime: '15:15',
 };
 

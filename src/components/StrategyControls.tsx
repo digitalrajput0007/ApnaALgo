@@ -1,9 +1,29 @@
-import React from 'react';
-import { Check, RotateCcw, Save, Undo2 } from 'lucide-react';
-import { StrategyConfig } from '../types/strategy';
+import React, { useState } from 'react';
+import {
+  BookmarkCheck,
+  Calculator,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Link2,
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
+  Trash2,
+  Undo2,
+  Wallet,
+} from 'lucide-react';
+import {
+  BiasEvaluationMode,
+  InstrumentType,
+  PerIndexStrategyMap,
+  StrategyConfig,
+} from '../types/strategy';
+import { formatINR } from '../utils/formatters';
 import {
   InstrumentMeta,
   OPTION_DELTA_PRESETS,
+  RiskBasedLotCalculation,
 } from '../utils/optionsEngine';
 
 interface StrategyControlsProps {
@@ -16,6 +36,17 @@ interface StrategyControlsProps {
   onDiscard?: () => void;
   instrumentMeta?: InstrumentMeta | null;
   loadingLotSize?: boolean;
+  /** Per-index attached strategy support */
+  activeSymbol?: string;
+  isAttachedToActiveSymbol?: boolean;
+  perIndexConfigs?: PerIndexStrategyMap;
+  onAttachToSymbol?: (symbol: string, cfg: StrategyConfig) => void;
+  onRemoveAttachedSymbol?: (symbol: string) => void;
+  /** Paper Wallet & Risk Management lot sizing readout */
+  lotCalculation?: RiskBasedLotCalculation | null;
+  autoSizeLotsEnabled?: boolean;
+  onOpenPaperWallet?: () => void;
+  defaultCollapsed?: boolean;
 }
 
 export const StrategyControls: React.FC<StrategyControlsProps> = ({
@@ -28,637 +59,681 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
   onDiscard,
   instrumentMeta = null,
   loadingLotSize = false,
+  activeSymbol,
+  isAttachedToActiveSymbol = false,
+  perIndexConfigs = {},
+  onAttachToSymbol,
+  onRemoveAttachedSymbol,
+  lotCalculation = null,
+  autoSizeLotsEnabled = false,
+  onOpenPaperWallet,
+  defaultCollapsed = false,
 }) => {
-  const updateField = <K extends keyof StrategyConfig>(
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  const update = <K extends keyof StrategyConfig>(
     key: K,
     value: StrategyConfig[K]
   ) => {
     onChange({ ...config, [key]: value });
   };
 
+  const isOptionBuying = config.instrumentType === 'NIFTY_ATM_OPT';
+  const effectiveDelta = isOptionBuying
+    ? config.optionDeltaEstimate || 0.5
+    : 1;
+  const optionSlPts = Math.round(config.stopLossPoints * effectiveDelta * 10) / 10;
+  const optionTargetPts = Math.round(config.targetPoints * effectiveDelta * 10) / 10;
+  const riskPerTradeRupees = Math.round(
+    optionSlPts * config.lotSize * config.lots
+  );
+  const rewardPerTradeRupees = Math.round(
+    optionTargetPts * config.lotSize * config.lots
+  );
+  const attachedSymbols = Object.keys(perIndexConfigs);
+  const activeDisplayName =
+    instrumentMeta?.displayName || activeSymbol || 'NIFTY 50';
+
   const inputCls =
-    'mt-1 w-full px-2.5 py-1.5 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600';
+    'w-full px-3 py-2 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500';
+  const labelCls =
+    'block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1';
 
   return (
-    <aside className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800">
-      <div className="px-5 py-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Strategy Parameters
-            </h2>
-            <p
-              className={`text-xs mt-0.5 ${
-                hasUnsavedChanges
-                  ? 'text-amber-600 dark:text-amber-400 font-medium'
-                  : justSaved
-                  ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                  : 'text-slate-500 dark:text-slate-400'
-              }`}
-            >
-              {hasUnsavedChanges
-                ? 'Unsaved parameter changes'
-                : justSaved
-                ? 'Saved to workspace'
-                : '5m NIFTY execution rules'}
+    <section
+      aria-label="Strategy Parameters"
+      className="bg-white dark:bg-[#111622] border border-slate-200/90 dark:border-slate-800/90 rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.03)] overflow-hidden"
+    >
+      {/* Top Bar: Title, Attached Index Badge, Quick Actions & Collapse Toggle */}
+      <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+            <SlidersHorizontal
+              className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400"
+              aria-hidden="true"
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100">
+                Strategy Configuration
+              </h2>
+              <span className="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-md bg-slate-100 dark:bg-[#161D2B] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                {activeDisplayName}
+              </span>
+              {isAttachedToActiveSymbol ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
+                  <BookmarkCheck className="w-3 h-3" aria-hidden="true" />
+                  <span>Attached Strategy</span>
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Global Default
+                </span>
+              )}
+              {hasUnsavedChanges && (
+                <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  · Unsaved
+                </span>
+              )}
+              {!hasUnsavedChanges && justSaved && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  <Check className="w-3 h-3" />
+                  Saved
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
+              {isOptionBuying
+                ? `Options Buy Only (${effectiveDelta.toFixed(2)}Δ · BUY CE/PE)`
+                : config.instrumentType}{' '}
+              · SL {config.stopLossPoints}pt
+              {isOptionBuying ? ` (${optionSlPts}pt Opt)` : ''} · Target{' '}
+              {config.targetPoints}pt
+              {isOptionBuying ? ` (${optionTargetPts}pt Opt)` : ''} ·{' '}
+              {config.lots}L ({config.lots * config.lotSize} qty)
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onResetDefaults}
-            title="Reset all parameters to factory defaults"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Reset</span>
-          </button>
         </div>
 
-        {onSave && (
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {activeSymbol && onAttachToSymbol && (
+            <button
+              type="button"
+              onClick={() => onAttachToSymbol(activeSymbol, config)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+            >
+              <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Attach to {activeDisplayName}</span>
+            </button>
+          )}
+
+          {onSave && hasUnsavedChanges && (
             <button
               type="button"
               onClick={onSave}
-              disabled={!hasUnsavedChanges && !justSaved}
-              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                hasUnsavedChanges
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-xs'
-                  : justSaved
-                  ? 'bg-emerald-600 text-white cursor-default'
-                  : 'bg-slate-100 dark:bg-[#161D2B] text-slate-500 dark:text-slate-500 cursor-default'
-              }`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
             >
-              {justSaved && !hasUnsavedChanges ? (
-                <>
-                  <Check className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Changes Saved</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>{hasUnsavedChanges ? 'Save Changes' : 'Saved'}</span>
-                </>
-              )}
+              <Save className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Save</span>
             </button>
-
-            {hasUnsavedChanges && onDiscard && (
-              <button
-                type="button"
-                onClick={onDiscard}
-                title="Revert to last saved parameters"
-                className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Revert</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Section 1: 4-Candle Bias Rules */}
-      <div className="px-5 py-4 space-y-3.5">
-        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-          01. 4-Candle Bias Filter
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Candles per Set
-            </span>
-            <input
-              type="number"
-              min={2}
-              max={8}
-              value={config.setSize}
-              onChange={(e) =>
-                updateField(
-                  'setSize',
-                  Math.max(2, Math.min(8, Number(e.target.value) || 4))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Majority Needed
-            </span>
-            <input
-              type="number"
-              min={2}
-              max={config.setSize}
-              value={config.requiredMajority}
-              onChange={(e) =>
-                updateField(
-                  'requiredMajority',
-                  Math.max(
-                    2,
-                    Math.min(config.setSize, Number(e.target.value) || 3)
-                  )
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        <div>
-          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 block mb-1.5">
-            Bias Persistence
-          </span>
-          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
-            <button
-              type="button"
-              onClick={() => updateField('biasMode', 'LOCK_FOR_DAY')}
-              className={`px-2 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                config.biasMode === 'LOCK_FOR_DAY'
-                  ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Lock Once Decided
-            </button>
-            <button
-              type="button"
-              onClick={() => updateField('biasMode', 'ROLLING_SETS')}
-              className={`px-2 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                config.biasMode === 'ROLLING_SETS'
-                  ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              Re-eval Every Set
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Section 2: RSI(2) Zone & Entry Buffer */}
-      <div className="px-5 py-4 space-y-3.5">
-        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-          02. RSI({config.rsiLength}) &amp; Entry Buffer
-        </div>
-
-        <div className="grid grid-cols-3 gap-2.5">
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Length
-            </span>
-            <input
-              type="number"
-              min={2}
-              max={14}
-              value={config.rsiLength}
-              onChange={(e) =>
-                updateField(
-                  'rsiLength',
-                  Math.max(2, Math.min(14, Number(e.target.value) || 2))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-              Buy &lt;
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={45}
-              value={config.rsiBuyThreshold}
-              onChange={(e) =>
-                updateField(
-                  'rsiBuyThreshold',
-                  Math.max(1, Math.min(45, Number(e.target.value) || 12))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-medium text-red-600 dark:text-red-400">
-              Sell &gt;
-            </span>
-            <input
-              type="number"
-              min={55}
-              max={99}
-              value={config.rsiSellThreshold}
-              onChange={(e) =>
-                updateField(
-                  'rsiSellThreshold',
-                  Math.max(55, Math.min(99, Number(e.target.value) || 89))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Entry Buffer Points
-            </span>
-            <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-              High+{config.entryBufferPoints} / Low-{config.entryBufferPoints}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={25}
-              step={0.5}
-              value={config.entryBufferPoints}
-              onChange={(e) =>
-                updateField(
-                  'entryBufferPoints',
-                  Math.max(0, Math.min(25, Number(e.target.value) || 0))
-                )
-              }
-              className="w-24 px-2.5 py-1.5 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-            <div className="flex flex-1 items-center gap-1">
-              {[0, 0.5, 1, 2, 5].map((buf) => (
-                <button
-                  key={buf}
-                  type="button"
-                  onClick={() => updateField('entryBufferPoints', buf)}
-                  className={`flex-1 py-1.5 text-[11px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
-                    config.entryBufferPoints === buf
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold'
-                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {buf}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
-          <input
-            type="checkbox"
-            checked={config.updateTriggerWhileInRsiZone}
-            onChange={(e) =>
-              updateField('updateTriggerWhileInRsiZone', e.target.checked)
-            }
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
-          />
-          <span className="text-xs text-slate-600 dark:text-slate-400 leading-snug">
-            Shift base candle on Lower High (Buy) / Higher Low (Sell) until
-            breakout
-          </span>
-        </label>
-      </div>
-
-      {/* Section 3: Risk, Target, Daily Cap & 1:1 Cost Trail */}
-      <div className="px-5 py-4 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            03. Risk &amp; 1:1 Cost Trail
-          </span>
-          <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-            1:{(config.targetPoints / Math.max(1, config.stopLossPoints)).toFixed(1)} RR
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Strict SL (pts)
-            </span>
-            <input
-              type="number"
-              min={5}
-              max={100}
-              step={5}
-              value={config.stopLossPoints}
-              onChange={(e) =>
-                updateField(
-                  'stopLossPoints',
-                  Math.max(5, Math.min(100, Number(e.target.value) || 20))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Target (pts)
-            </span>
-            <input
-              type="number"
-              min={10}
-              max={250}
-              step={5}
-              value={config.targetPoints}
-              onChange={(e) =>
-                updateField(
-                  'targetPoints',
-                  Math.max(10, Math.min(250, Number(e.target.value) || 60))
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {[40, 60, 80, 100].map((presetTarget) => (
-            <button
-              key={presetTarget}
-              type="button"
-              onClick={() => updateField('targetPoints', presetTarget)}
-              className={`flex-1 py-1 text-xs font-mono tabular-nums rounded border transition-colors cursor-pointer ${
-                config.targetPoints === presetTarget
-                  ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              +{presetTarget}
-            </button>
-          ))}
-        </div>
-
-        {/* Max Trades Per Day */}
-        <div className="space-y-1.5">
-          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 block">
-            Max Trades Per Day
-          </span>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={config.maxTradesPerDay}
-              onChange={(e) =>
-                updateField(
-                  'maxTradesPerDay',
-                  Math.max(1, Math.min(20, Number(e.target.value) || 4))
-                )
-              }
-              className="w-20 px-2.5 py-1.5 text-sm font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-            <div className="flex flex-1 items-center gap-1">
-              {[1, 2, 3, 4, 6].map((cnt) => (
-                <button
-                  key={cnt}
-                  type="button"
-                  onClick={() => updateField('maxTradesPerDay', cnt)}
-                  className={`flex-1 py-1.5 text-[11px] font-mono tabular-nums rounded border transition-colors cursor-pointer ${
-                    config.maxTradesPerDay === cnt
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold'
-                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  {cnt}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
-          <input
-            type="checkbox"
-            checked={config.trailToCostAtOneToOne}
-            onChange={(e) =>
-              updateField('trailToCostAtOneToOne', e.target.checked)
-            }
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
-          />
-          <span className="text-xs text-slate-600 dark:text-slate-400 leading-snug">
-            Trail SL to Entry (Cost) once trade reaches 1:1 (+
-            {config.stopLossPoints} pts)
-          </span>
-        </label>
-
-        <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
-          <input
-            type="checkbox"
-            checked={config.stopAfterTargetHit}
-            onChange={(e) =>
-              updateField('stopAfterTargetHit', e.target.checked)
-            }
-            className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
-          />
-          <span className="text-xs text-slate-600 dark:text-slate-400 leading-snug">
-            Stop trading for the day after any Target hit (next trade only on
-            SL)
-          </span>
-        </label>
-      </div>
-
-      {/* Section 4: Fyers Sizing & Instrument Mapping */}
-      <div className="px-5 py-4 space-y-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            04. Sizing &amp; Instrument
-          </span>
-          {instrumentMeta && (
-            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-              {loadingLotSize
-                ? 'Syncing lot...'
-                : instrumentMeta.fnoEnabled
-                ? `${instrumentMeta.underlying} · Auto ${instrumentMeta.lotSize}`
-                : `${instrumentMeta.underlying} · Cash`}
-            </span>
           )}
-        </div>
 
-        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-[#161D2B] rounded-lg">
+          {onDiscard && hasUnsavedChanges && (
+            <button
+              type="button"
+              onClick={onDiscard}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+            >
+              <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Revert</span>
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={() => updateField('instrumentType', 'NIFTY_FUT')}
-            className={`px-2 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-              config.instrumentType === 'NIFTY_FUT'
-                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
+            onClick={onResetDefaults}
+            title="Reset strategy parameters to default Options Buy 0.50Δ configuration"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-pointer"
           >
-            {instrumentMeta?.underlying || 'Index'} Futures
+            <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Defaults</span>
           </button>
+
           <button
             type="button"
-            onClick={() => updateField('instrumentType', 'NIFTY_ATM_OPT')}
-            className={`px-2 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-              config.instrumentType === 'NIFTY_ATM_OPT'
-                ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-slate-100 shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-[#161D2B] hover:bg-slate-200/80 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
           >
-            Options Buying
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 flex items-center justify-between gap-1">
-              <span>Lot Size</span>
-              {instrumentMeta?.fnoEnabled &&
-                config.lotSize !== instrumentMeta.lotSize && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateField('lotSize', instrumentMeta.lotSize)
-                    }
-                    className="text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                  >
-                    Use {instrumentMeta.lotSize}
-                  </button>
-                )}
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={25000}
-              value={config.lotSize}
-              onChange={(e) =>
-                updateField(
-                  'lotSize',
-                  Math.max(1, Number(e.target.value) || 1)
-                )
-              }
-              className={inputCls}
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-              Lots
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={config.lots}
-              onChange={(e) =>
-                updateField('lots', Math.max(1, Number(e.target.value) || 1))
-              }
-              className={inputCls}
-            />
-          </label>
-        </div>
-
-        {instrumentMeta?.nearFuturesSymbol && (
-          <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between">
-            <span>Near Fut</span>
-            <span className="text-slate-700 dark:text-slate-300 truncate max-w-[175px]">
-              {instrumentMeta.nearFuturesSymbol}
-            </span>
-          </div>
-        )}
-
-        {config.instrumentType === 'NIFTY_ATM_OPT' && (
-          <div className="space-y-2.5 pt-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
-                Target Option Delta (CE/PE)
-              </span>
-              <span className="text-[11px] font-mono tabular-nums font-semibold text-slate-900 dark:text-slate-100">
-                {config.optionDeltaEstimate.toFixed(2)}Δ
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1">
-              {OPTION_DELTA_PRESETS.map((preset) => {
-                const isSelected =
-                  Math.abs(config.optionDeltaEstimate - preset.delta) < 0.03;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
-                      updateField('optionDeltaEstimate', preset.delta)
-                    }
-                    className={`py-1.5 px-1 text-[10px] font-mono rounded border transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold'
-                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {preset.delta.toFixed(2)}Δ
-                  </button>
-                );
-              })}
-            </div>
-
-            <input
-              type="range"
-              min={0.45}
-              max={0.85}
-              step={0.01}
-              value={config.optionDeltaEstimate}
-              onChange={(e) =>
-                updateField(
-                  'optionDeltaEstimate',
-                  Number(e.target.value) || 0.65
-                )
-              }
-              aria-label="Target option delta"
-              className="w-full accent-blue-600 cursor-pointer"
-            />
-
-            <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 leading-relaxed">
-              Signals run on{' '}
-              <strong className="text-slate-800 dark:text-slate-200">
-                {instrumentMeta?.displayName || 'Index'} Spot
-              </strong>
-              ; Bullish buys{' '}
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                CE
-              </span>
-              , Bearish buys{' '}
-              <span className="text-red-600 dark:text-red-400 font-semibold">
-                PE
-              </span>{' '}
-              at ~{config.optionDeltaEstimate.toFixed(2)}Δ (1–2 strikes ITM
-              recommended to minimize theta bleed).
-            </div>
-          </div>
-        )}
-      </div>
-
-      {onSave && (
-        <div className="px-5 py-3.5 bg-slate-50/70 dark:bg-[#0E131D] rounded-b-xl flex items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-            {hasUnsavedChanges
-              ? 'Click Save to persist'
-              : 'Synced across sessions'}
-          </span>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!hasUnsavedChanges && !justSaved}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-              hasUnsavedChanges
-                ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-                : justSaved
-                ? 'bg-emerald-600 text-white cursor-default'
-                : 'bg-slate-200/80 dark:bg-[#161D2B] text-slate-500 dark:text-slate-500 cursor-default'
-            }`}
-          >
-            {justSaved && !hasUnsavedChanges ? (
+            {collapsed ? (
               <>
-                <Check className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Saved</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+                <span>Configure</span>
               </>
             ) : (
               <>
-                <Save className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Save Changes</span>
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Hide</span>
               </>
             )}
           </button>
         </div>
+      </div>
+
+      {/* Vertical Stacked Configuration Body */}
+      {!collapsed && (
+        <div className="p-4 sm:p-5 space-y-5 divide-y divide-slate-100 dark:divide-slate-800/80">
+          {/* SECTION 1: Options Buying Mode, 0.50Δ Delta & Smart Expiry */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                1. Execution Mode · Options Buy Only (CE / PE)
+              </div>
+              <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                Bullish → <span className="text-emerald-600 dark:text-emerald-400 font-semibold">BUY CE</span>{' '}
+                · Bearish → <span className="text-red-600 dark:text-red-400 font-semibold">BUY PE</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className={labelCls}>Execution Instrument</label>
+                <select
+                  value={config.instrumentType}
+                  onChange={(e) => {
+                    const nextType = e.target.value as InstrumentType;
+                    onChange({
+                      ...config,
+                      instrumentType: nextType,
+                      optionDeltaEstimate:
+                        nextType === 'NIFTY_ATM_OPT'
+                          ? config.optionDeltaEstimate || 0.5
+                          : config.optionDeltaEstimate,
+                    });
+                  }}
+                  className={inputCls}
+                >
+                  <option value="NIFTY_ATM_OPT">
+                    Options Buy Only (BUY CE / BUY PE)
+                  </option>
+                  <option value="NIFTY_FUT">Index Futures (Sim)</option>
+                  <option value="NIFTY_SPOT_SIM">Spot Index (Sim)</option>
+                </select>
+              </div>
+
+              {isOptionBuying && (
+                <div>
+                  <label className={labelCls}>
+                    Option Delta (0.50Δ = Half SL)
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg">
+                    {OPTION_DELTA_PRESETS.map((preset) => {
+                      const active =
+                        Math.abs(config.optionDeltaEstimate - preset.delta) < 0.05;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() =>
+                            update('optionDeltaEstimate', preset.delta)
+                          }
+                          className={`py-1.5 text-[11px] font-mono rounded-md transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-blue-600 text-white font-semibold'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                          }`}
+                        >
+                          {preset.delta.toFixed(2)}Δ
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {isOptionBuying && (
+                <div>
+                  <label className={labelCls}>Expiry Selection</label>
+                  <select
+                    value={config.optionExpiryPreference || 'auto'}
+                    onChange={(e) =>
+                      update(
+                        'optionExpiryPreference',
+                        e.target.value as 'auto' | 'current' | 'next'
+                      )
+                    }
+                    className={inputCls}
+                  >
+                    <option value="auto">
+                      Auto (Roll to Next on Expiry Day)
+                    </option>
+                    <option value="current">Current Weekly / Monthly</option>
+                    <option value="next">Next Expiry (Lower Gamma)</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className={labelCls}>
+                  Lot Size{' '}
+                  {loadingLotSize ? (
+                    <span className="text-blue-500">(fetching...)</span>
+                  ) : instrumentMeta?.fnoEnabled ? (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      (Auto · {instrumentMeta.underlying})
+                    </span>
+                  ) : null}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={config.lotSize}
+                  onChange={(e) =>
+                    update('lotSize', Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 2: Risk Management, SL/Target & Position Sizing */}
+          <div className="pt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                2. Stop Loss, Target &amp; Risk-Based Lot Sizing
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono tabular-nums">
+                <span className="text-red-600 dark:text-red-400 font-semibold">
+                  Risk/Trade:{' '}
+                  {formatINR(-riskPerTradeRupees, { signed: true, decimals: 0 })}
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">·</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Target:{' '}
+                  {formatINR(rewardPerTradeRupees, { signed: true, decimals: 0 })}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div>
+                <label className={labelCls}>
+                  Index SL (pts){' '}
+                  {isOptionBuying && (
+                    <span className="text-red-600 dark:text-red-400 font-mono">
+                      → {optionSlPts}pt Opt
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min={2}
+                  max={500}
+                  step={1}
+                  value={config.stopLossPoints}
+                  onChange={(e) =>
+                    update(
+                      'stopLossPoints',
+                      Math.max(2, Number(e.target.value) || 20)
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>
+                  Index Target (pts){' '}
+                  {isOptionBuying && (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-mono">
+                      → {optionTargetPts}pt Opt
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  max={1500}
+                  step={5}
+                  value={config.targetPoints}
+                  onChange={(e) =>
+                    update(
+                      'targetPoints',
+                      Math.max(5, Number(e.target.value) || 60)
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>
+                  Lots{' '}
+                  {autoSizeLotsEnabled && lotCalculation ? (
+                    <span className="text-blue-600 dark:text-blue-400">
+                      (Auto: {lotCalculation.recommendedLots})
+                    </span>
+                  ) : null}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  step={1}
+                  value={config.lots}
+                  onChange={(e) =>
+                    update(
+                      'lots',
+                      Math.max(1, Math.floor(Number(e.target.value) || 1))
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Max Trades / Day</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={config.maxTradesPerDay}
+                  onChange={(e) =>
+                    update(
+                      'maxTradesPerDay',
+                      Math.max(1, Math.min(20, Number(e.target.value) || 1))
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Auto Square-Off (IST)</label>
+                <input
+                  type="time"
+                  value={config.squareOffTime}
+                  onChange={(e) =>
+                    update('squareOffTime', e.target.value || '15:15')
+                  }
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            {/* Paper Wallet Risk Calculation Bar */}
+            {lotCalculation && onOpenPaperWallet && (
+              <div className="px-3.5 py-2.5 rounded-lg bg-slate-50 dark:bg-[#0E131D] border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-mono tabular-nums">
+                  <Calculator className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>
+                    Wallet Risk:{' '}
+                    <strong>
+                      {formatINR(lotCalculation.allowedRiskRupees, {
+                        signed: false,
+                        decimals: 0,
+                      })}
+                    </strong>{' '}
+                    ÷{' '}
+                    <strong>
+                      {formatINR(lotCalculation.riskPerLotRupees, {
+                        signed: false,
+                        decimals: 0,
+                      })}
+                      /lot
+                    </strong>{' '}
+                    ={' '}
+                    <strong className="text-blue-600 dark:text-blue-400">
+                      {lotCalculation.recommendedLots} lot
+                      {lotCalculation.recommendedLots === 1 ? '' : 's'}
+                    </strong>
+                    {autoSizeLotsEnabled ? ' (Auto-applied)' : ''}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenPaperWallet}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-md cursor-pointer"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>Configure Paper Wallet &amp; Risk</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 3: 4-Candle Bias, RSI(2) Setup & Trade Rules */}
+          <div className="pt-4 space-y-3">
+            <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+              3. Bias &amp; RSI Entry Rules
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div>
+                <label className={labelCls}>Set Size (Candles)</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={12}
+                  step={1}
+                  value={config.setSize}
+                  onChange={(e) => {
+                    const nextSet = Math.max(
+                      2,
+                      Math.min(12, Number(e.target.value) || 4)
+                    );
+                    onChange({
+                      ...config,
+                      setSize: nextSet,
+                      requiredMajority: Math.min(
+                        config.requiredMajority,
+                        nextSet
+                      ),
+                    });
+                  }}
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Required Majority</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={config.setSize}
+                  step={1}
+                  value={config.requiredMajority}
+                  onChange={(e) =>
+                    update(
+                      'requiredMajority',
+                      Math.max(
+                        2,
+                        Math.min(config.setSize, Number(e.target.value) || 3)
+                      )
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>RSI Length</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={14}
+                  step={1}
+                  value={config.rsiLength}
+                  onChange={(e) =>
+                    update(
+                      'rsiLength',
+                      Math.max(2, Math.min(14, Number(e.target.value) || 2))
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Buy CE if RSI &lt;</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={49}
+                  step={1}
+                  value={config.rsiBuyThreshold}
+                  onChange={(e) =>
+                    update(
+                      'rsiBuyThreshold',
+                      Math.max(1, Math.min(49, Number(e.target.value) || 12))
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Buy PE if RSI &gt;</label>
+                <input
+                  type="number"
+                  min={51}
+                  max={99}
+                  step={1}
+                  value={config.rsiSellThreshold}
+                  onChange={(e) =>
+                    update(
+                      'rsiSellThreshold',
+                      Math.max(51, Math.min(99, Number(e.target.value) || 89))
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className={labelCls}>Entry Buffer (pts)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={25}
+                  step={0.5}
+                  value={config.entryBufferPoints}
+                  onChange={(e) =>
+                    update(
+                      'entryBufferPoints',
+                      Math.max(0, Number(e.target.value) || 0)
+                    )
+                  }
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 text-xs text-slate-700 dark:text-slate-300">
+              <label className="inline-flex items-center gap-2">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Bias Mode:
+                </span>
+                <select
+                  value={config.biasMode}
+                  onChange={(e) =>
+                    update('biasMode', e.target.value as BiasEvaluationMode)
+                  }
+                  className="px-2.5 py-1 text-xs bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md"
+                >
+                  <option value="LOCK_FOR_DAY">Lock for Day</option>
+                  <option value="ROLLING_SETS">Rolling 4-Candle Sets</option>
+                </select>
+              </label>
+
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={config.trailToCostAtOneToOne}
+                  onChange={(e) =>
+                    update('trailToCostAtOneToOne', e.target.checked)
+                  }
+                  className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
+                />
+                <span>Trail SL to Cost at 1:1</span>
+              </label>
+
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={config.stopAfterTargetHit}
+                  onChange={(e) =>
+                    update('stopAfterTargetHit', e.target.checked)
+                  }
+                  className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
+                />
+                <span>Stop trading after Target hit</span>
+              </label>
+
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={config.updateTriggerWhileInRsiZone}
+                  onChange={(e) =>
+                    update('updateTriggerWhileInRsiZone', e.target.checked)
+                  }
+                  className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-600"
+                />
+                <span>Trail trigger level inside RSI zone</span>
+              </label>
+            </div>
+          </div>
+
+          {/* SECTION 4: Attached Per-Index Strategies Overview */}
+          {attachedSymbols.length > 0 && (
+            <div className="pt-4 space-y-2">
+              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                Attached Per-Index Strategies ({attachedSymbols.length})
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {attachedSymbols.map((sym) => {
+                  const sc = perIndexConfigs[sym];
+                  const isCurrent = activeSymbol === sym;
+                  return (
+                    <div
+                      key={sym}
+                      className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[11px] font-mono tabular-nums ${
+                        isCurrent
+                          ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-slate-50 dark:bg-[#0E131D] border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <span className="font-semibold">
+                        {sym.replace(/^(NSE|BSE):|-INDEX$|-EQ$/g, '')}
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        SL {sc.stopLossPoints} / T {sc.targetPoints} ·{' '}
+                        {sc.optionDeltaEstimate}Δ · RSI {sc.rsiBuyThreshold}/
+                        {sc.rsiSellThreshold}
+                      </span>
+                      {onRemoveAttachedSymbol && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveAttachedSymbol(sym)}
+                          title={`Detach saved strategy for ${sym}`}
+                          className="text-slate-400 hover:text-red-500 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
-    </aside>
+    </section>
   );
 };

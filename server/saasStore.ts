@@ -83,8 +83,18 @@ export interface UserOrderJournalData {
   positions: unknown[];
 }
 
+export interface PersistedLiveStreamState {
+  active: boolean;
+  symbol: string;
+  optionSymbol?: string | null;
+  startedAt: number;
+}
+
 export interface UserWorkspaceData {
   strategyConfig: Record<string, unknown> | null;
+  perIndexConfigs?: Record<string, Record<string, unknown>>;
+  paperWallet?: Record<string, unknown> | null;
+  liveStreamState?: PersistedLiveStreamState | null;
   paperTrades: unknown[];
   savedReports: unknown[];
   orderJournal?: UserOrderJournalData;
@@ -869,6 +879,9 @@ class SaaSStore {
     if (!stored) {
       return {
         strategyConfig: null,
+        perIndexConfigs: {},
+        paperWallet: null,
+        liveStreamState: null,
         paperTrades: [],
         savedReports: [],
         orderJournal: { orders: [], positions: [] },
@@ -877,6 +890,9 @@ class SaaSStore {
     }
     return {
       ...stored,
+      perIndexConfigs: stored.perIndexConfigs ?? {},
+      paperWallet: stored.paperWallet ?? null,
+      liveStreamState: stored.liveStreamState ?? null,
       orderJournal: stored.orderJournal ?? { orders: [], positions: [] },
     };
   }
@@ -891,6 +907,18 @@ class SaaSStore {
         patch.strategyConfig !== undefined
           ? patch.strategyConfig
           : current.strategyConfig,
+      perIndexConfigs:
+        patch.perIndexConfigs !== undefined
+          ? patch.perIndexConfigs
+          : current.perIndexConfigs ?? {},
+      paperWallet:
+        patch.paperWallet !== undefined
+          ? patch.paperWallet
+          : current.paperWallet ?? null,
+      liveStreamState:
+        patch.liveStreamState !== undefined
+          ? patch.liveStreamState
+          : current.liveStreamState ?? null,
       paperTrades:
         patch.paperTrades !== undefined
           ? patch.paperTrades
@@ -910,6 +938,19 @@ class SaaSStore {
     return next;
   }
 
+  getAllActiveLiveStreams(): Array<{
+    userId: string;
+    state: PersistedLiveStreamState;
+  }> {
+    const result: Array<{ userId: string; state: PersistedLiveStreamState }> = [];
+    for (const [userId, ws] of this.workspaces.entries()) {
+      if (ws.liveStreamState && ws.liveStreamState.active && ws.liveStreamState.symbol) {
+        result.push({ userId, state: ws.liveStreamState });
+      }
+    }
+    return result;
+  }
+
   getBrokerConnection(
     userId: string,
     brokerId: BrokerId
@@ -918,11 +959,48 @@ class SaaSStore {
     return map?.[brokerId] ?? null;
   }
 
+  getAllBrokerConnections(
+    brokerId: BrokerId
+  ): Array<{ userId: string; connection: BrokerConnectionRecord }> {
+    const out: Array<{ userId: string; connection: BrokerConnectionRecord }> = [];
+    for (const [userId, map] of this.brokerConnections.entries()) {
+      const conn = map?.[brokerId];
+      if (conn) {
+        out.push({ userId, connection: conn });
+      }
+    }
+    return out;
+  }
+
   setBrokerConnection(userId: string, record: BrokerConnectionRecord): void {
     const current = this.brokerConnections.get(userId) ?? {};
-    current[record.brokerId] = record;
+    const existing = current[record.brokerId];
+    // Preserve saved PIN across OAuth reconnections unless explicitly overwritten
+    const merged: BrokerConnectionRecord = {
+      ...record,
+      pin: record.pin !== undefined ? record.pin : existing?.pin,
+    };
+    current[record.brokerId] = merged;
     this.brokerConnections.set(userId, current);
     this.persistBrokers();
+  }
+
+  updateBrokerPin(
+    userId: string,
+    brokerId: BrokerId,
+    pin: string | null
+  ): BrokerConnectionRecord | null {
+    const current = this.brokerConnections.get(userId);
+    const existing = current?.[brokerId];
+    if (!existing) return null;
+    if (pin && pin.trim()) {
+      existing.pin = pin.trim();
+    } else {
+      delete existing.pin;
+    }
+    this.brokerConnections.set(userId, current);
+    this.persistBrokers();
+    return existing;
   }
 
   removeBrokerConnection(userId: string, brokerId: BrokerId): void {

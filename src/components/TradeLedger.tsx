@@ -185,7 +185,11 @@ export const TradeLedger: React.FC<TradeLedgerProps> = ({
                               : 'text-red-600 dark:text-red-400'
                           }
                         >
-                          {t.direction}
+                          {config.instrumentType === 'NIFTY_ATM_OPT'
+                            ? t.direction === 'LONG'
+                              ? 'BUY CE'
+                              : 'BUY PE'
+                            : t.direction}
                         </span>
                       </td>
                       <td className="px-3 font-mono tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap">

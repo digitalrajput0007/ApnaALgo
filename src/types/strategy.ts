@@ -36,8 +36,33 @@ export interface StrategyConfig {
   lots: number;
   instrumentType: InstrumentType;
   optionDeltaEstimate: number;
+  optionExpiryPreference?: 'auto' | 'current' | 'next';
   squareOffTime: string;
 }
+
+export type PerIndexStrategyMap = Record<string, StrategyConfig>;
+
+export type PaperRiskMode = 'FIXED_INR' | 'PERCENT_CAPITAL';
+
+export interface PaperWalletConfig {
+  startingCapital: number;
+  riskMode: PaperRiskMode;
+  riskPerTradeRupees: number;
+  riskPerTradePct: number;
+  maxDailyLossRupees: number;
+  maxLotsCap: number;
+  autoSizeLots: boolean;
+}
+
+export const DEFAULT_PAPER_WALLET_CONFIG: PaperWalletConfig = {
+  startingCapital: 200000,
+  riskMode: 'FIXED_INR',
+  riskPerTradeRupees: 2000,
+  riskPerTradePct: 1.5,
+  maxDailyLossRupees: 6000,
+  maxLotsCap: 25,
+  autoSizeLots: true,
+};
 
 export interface CandleSetSummary {
   setNumber: number;

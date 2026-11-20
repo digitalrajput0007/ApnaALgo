@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight,
   Bookmark,
+  BookmarkCheck,
   Calendar,
   CalendarPlus,
   Database,
   Download,
+  Link2,
   Play,
   Trash2,
 } from 'lucide-react';
@@ -29,6 +31,7 @@ import {
 import { SaveBatchOutcome } from '../hooks/usePaperTradeJournal';
 import {
   Candle,
+  PerIndexStrategyMap,
   SavedBacktestReport,
   StrategyConfig,
   TradeRecord,
@@ -42,6 +45,7 @@ import {
 import {
   getFallbackInstrumentMeta,
   InstrumentMeta,
+  RiskBasedLotCalculation,
 } from '../utils/optionsEngine';
 
 interface YearlyBacktestViewProps {
@@ -72,6 +76,12 @@ interface YearlyBacktestViewProps {
   userId?: string | null;
   serverSavedReports?: SavedBacktestReport[] | null;
   theme?: 'dark' | 'light';
+  perIndexConfigs?: PerIndexStrategyMap;
+  onAttachStrategyToSymbol?: (symbol: string, cfg: StrategyConfig) => void;
+  onRemoveAttachedStrategy?: (symbol: string) => void;
+  lotCalculation?: RiskBasedLotCalculation | null;
+  autoSizeLotsEnabled?: boolean;
+  onOpenPaperWallet?: () => void;
 }
 
 type DayFilter = 'all' | 'win' | 'loss' | 'notrade';
@@ -120,6 +130,12 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   userId = null,
   serverSavedReports = null,
   theme = 'dark',
+  perIndexConfigs = {},
+  onAttachStrategyToSymbol,
+  onRemoveAttachedStrategy,
+  lotCalculation = null,
+  autoSizeLotsEnabled = false,
+  onOpenPaperWallet,
 }) => {
   const isDark = theme === 'dark';
   const chartGridStroke = isDark ? '#1E293B' : '#e2e8f0';
@@ -193,9 +209,18 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     useState<InstrumentMeta>(() => getFallbackInstrumentMeta(activeSymbol));
   const [loadingBacktestLot, setLoadingBacktestLot] = useState(false);
 
+  const attachedConfigForActiveSymbol = perIndexConfigs[activeSymbol] ?? null;
+
   useEffect(() => {
     const fallback = getFallbackInstrumentMeta(activeSymbol);
     setBacktestInstrumentMeta(fallback);
+
+    // If this index already has a dedicated attached strategy, load it automatically
+    const attached = perIndexConfigs[activeSymbol];
+    if (attached) {
+      onChangeConfig({ ...DEFAULT_STRATEGY_CONFIG, ...attached });
+    }
+
     if (!userId) return;
 
     let cancelled = false;
@@ -211,7 +236,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         const meta = (await resp.json()) as InstrumentMeta;
         if (cancelled) return;
         setBacktestInstrumentMeta(meta);
-        if (meta.lotSize !== config.lotSize) {
+        if (!attached && meta.lotSize !== config.lotSize) {
           onChangeConfig({ ...config, lotSize: meta.lotSize });
         }
       } catch {
@@ -224,7 +249,7 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     return () => {
       cancelled = true;
     };
-    // Only re-sync lot size when the backtest symbol changes
+    // Only re-sync lot size / attached strategy when the backtest symbol changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSymbol, userId]);
 
@@ -695,6 +720,26 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
                 {loading ? 'Fetching Fyers 5m History...' : 'Run Backtest'}
               </span>
             </button>
+
+            {onAttachStrategyToSymbol && (
+              <button
+                type="button"
+                onClick={() => {
+                  onAttachStrategyToSymbol(activeSymbol, config);
+                  setSaveFeedback(
+                    `Attached current strategy parameters to ${backtestInstrumentMeta.displayName} (${activeSymbol}). Strategy Lab will auto-load this config whenever ${backtestInstrumentMeta.displayName} is selected.`
+                  );
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                {attachedConfigForActiveSymbol ? (
+                  <BookmarkCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : (
+                  <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
+                )}
+                <span>Attach Strategy to {backtestInstrumentMeta.displayName}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -813,6 +858,36 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         </div>
       )}
 
+      {/* Vertical Top-of-Page Strategy Configuration */}
+      <StrategyControls
+        config={config}
+        onChange={onChangeConfig}
+        onResetDefaults={onResetDefaults}
+        hasUnsavedChanges={hasUnsavedChanges}
+        justSaved={justSaved}
+        onSave={onSaveConfig}
+        onDiscard={onDiscardConfig}
+        instrumentMeta={backtestInstrumentMeta}
+        loadingLotSize={loadingBacktestLot}
+        activeSymbol={activeSymbol}
+        isAttachedToActiveSymbol={Boolean(attachedConfigForActiveSymbol)}
+        perIndexConfigs={perIndexConfigs}
+        onAttachToSymbol={
+          onAttachStrategyToSymbol
+            ? (sym, cfg) => {
+                onAttachStrategyToSymbol(sym, cfg);
+                setSaveFeedback(
+                  `Attached strategy to ${backtestInstrumentMeta.displayName} (${sym}).`
+                );
+              }
+            : undefined
+        }
+        onRemoveAttachedSymbol={onRemoveAttachedStrategy}
+        lotCalculation={lotCalculation}
+        autoSizeLotsEnabled={autoSizeLotsEnabled}
+        onOpenPaperWallet={onOpenPaperWallet}
+      />
+
       {/* Built-in Parameter Optimizer (SL, Target, Max Trades/Day, RSI, Entry Buffer) */}
       <StrategyOptimizerPanel
         candles={fetchedRange ? fetchedRange.candles : null}
@@ -827,12 +902,19 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         onFetchAndOptimize={() => void handleRunBacktest(true)}
         onApplyConfig={(next, label) => {
           onChangeConfig(next);
-          setSaveFeedback(label);
+          if (onAttachStrategyToSymbol) {
+            onAttachStrategyToSymbol(activeSymbol, next);
+            setSaveFeedback(
+              `${label} — automatically attached to ${backtestInstrumentMeta.displayName} (${activeSymbol}).`
+            );
+          } else {
+            setSaveFeedback(label);
+          }
         }}
       />
 
-      {/* Main 2-Column Layout with Live Parameter Tuning */}
-      <section className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
+      {/* Full-Width Results Stack (Strategy Parameters moved cleanly to top) */}
+      <section className="space-y-6">
         <div className="space-y-6 min-w-0">
           {!backtest ? (
             <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800 rounded-xl px-6 py-16 text-center space-y-3">
@@ -1578,18 +1660,6 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
             )}
           </div>
         </div>
-
-        <StrategyControls
-          config={config}
-          onChange={onChangeConfig}
-          onResetDefaults={onResetDefaults}
-          hasUnsavedChanges={hasUnsavedChanges}
-          justSaved={justSaved}
-          onSave={onSaveConfig}
-          onDiscard={onDiscardConfig}
-          instrumentMeta={backtestInstrumentMeta}
-          loadingLotSize={loadingBacktestLot}
-        />
       </section>
     </div>
   );
