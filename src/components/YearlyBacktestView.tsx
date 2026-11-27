@@ -9,6 +9,7 @@ import {
   Download,
   Link2,
   Play,
+  RefreshCw,
   Trash2,
   Wallet,
 } from 'lucide-react';
@@ -58,7 +59,10 @@ import {
 
 interface YearlyBacktestViewProps {
   config: StrategyConfig;
-  onChangeConfig: (next: StrategyConfig) => void;
+  savedGlobalConfig?: StrategyConfig;
+  onChangeConfig: (
+    next: StrategyConfig | ((prev: StrategyConfig) => StrategyConfig)
+  ) => void;
   onResetDefaults: () => void;
   onInspectDay: (candles: Candle[], date: string, symbol: string) => void;
   hasUnsavedChanges?: boolean;
@@ -127,6 +131,7 @@ function loadSavedReports(): SavedBacktestReport[] {
 
 export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   config,
+  savedGlobalConfig = DEFAULT_STRATEGY_CONFIG,
   onChangeConfig,
   onResetDefaults,
   onInspectDay,
@@ -283,15 +288,48 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
   const [loadingBacktestLot, setLoadingBacktestLot] = useState(false);
 
   const attachedConfigForActiveSymbol = perIndexConfigs[activeSymbol] ?? null;
+  const attachedConfigKey = attachedConfigForActiveSymbol
+    ? JSON.stringify(attachedConfigForActiveSymbol)
+    : '';
+  const prevActiveSymbolRef = useRef<string | null>(null);
+  const prevAttachedKeyRef = useRef<string>('');
 
   useEffect(() => {
+    const prevSymbol = prevActiveSymbolRef.current;
+    const isSymbolSwitch = prevSymbol !== null && prevSymbol !== activeSymbol;
+    const attachedHydratedOrChanged =
+      !isSymbolSwitch &&
+      attachedConfigKey !== '' &&
+      prevAttachedKeyRef.current !== attachedConfigKey;
+    prevActiveSymbolRef.current = activeSymbol;
+    prevAttachedKeyRef.current = attachedConfigKey;
+
+    // Never display or re-run stale candles from a previously selected script
+    setFetchedRange((prev) =>
+      prev && normalizeFyersSymbol(prev.symbol) !== activeSymbol ? null : prev
+    );
+
     const fallback = getFallbackInstrumentMeta(activeSymbol);
     setBacktestInstrumentMeta(fallback);
 
-    // If this index already has a dedicated attached strategy, load it automatically
+    // If this script has a dedicated attached strategy, load it automatically;
+    // otherwise when switching scripts, restore the global default + this script's lot size
+    // so a previously viewed script's attached config never leaks onto the new script.
     const attached = perIndexConfigs[activeSymbol];
-    if (attached) {
+    if (attached && (isSymbolSwitch || prevSymbol === null || attachedHydratedOrChanged)) {
       onChangeConfig({ ...DEFAULT_STRATEGY_CONFIG, ...attached });
+    } else if (!attached && isSymbolSwitch) {
+      onChangeConfig({
+        ...DEFAULT_STRATEGY_CONFIG,
+        ...savedGlobalConfig,
+        lotSize: fallback.lotSize,
+      });
+    } else if (!attached) {
+      onChangeConfig((prev) =>
+        prev.lotSize === fallback.lotSize
+          ? prev
+          : { ...prev, lotSize: fallback.lotSize }
+      );
     }
 
     if (!userId) return;
@@ -309,8 +347,13 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         const meta = (await resp.json()) as InstrumentMeta;
         if (cancelled) return;
         setBacktestInstrumentMeta(meta);
-        if (!attached && meta.lotSize !== config.lotSize) {
-          onChangeConfig({ ...config, lotSize: meta.lotSize });
+        if (!attached) {
+          // Use functional updater so async metadata fetch NEVER overwrites user SL/Target/RSI edits
+          onChangeConfig((prev) =>
+            prev.lotSize === fallback.lotSize && meta.lotSize !== prev.lotSize
+              ? { ...prev, lotSize: meta.lotSize }
+              : prev
+          );
         }
       } catch {
         // Keep fallback metadata
@@ -322,16 +365,19 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
     return () => {
       cancelled = true;
     };
-    // Only re-sync lot size / attached strategy when the backtest symbol changes
+    // Only re-sync lot size / attached strategy when the backtest symbol, attached config, or user changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSymbol, userId]);
+  }, [activeSymbol, attachedConfigKey, userId]);
 
   const applyQuickPreset = (daysCount: number) => {
     setActivePresetDays(daysCount);
     setFromDate(shiftDaysYYYYMMDD(toDate, -daysCount));
   };
 
-  const handleRunBacktest = async (autoOptimizeAfter = false) => {
+  const handleRunBacktest = async (
+    autoOptimizeAfter = false,
+    forceRefresh = false
+  ) => {
     setErrorMsg(null);
     setSaveFeedback(null);
 
@@ -351,8 +397,12 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         fromDate,
         toDate,
       });
+      if (forceRefresh) {
+        params.set('refresh', '1');
+      }
       const resp = await fetch(`/api/fyers/history-range?${params.toString()}`, {
         credentials: 'include',
+        cache: 'no-store',
       });
       const data = (await resp.json()) as {
         symbol?: string;
@@ -386,6 +436,13 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
           data.toDate || toDate
         })`
       );
+      if (forceRefresh) {
+        setSaveFeedback(
+          `Re-synced ${data.candles.length.toLocaleString('en-IN')} official 5-min candles for ${
+            data.symbol || activeSymbol
+          } directly from Fyers.`
+        );
+      }
       if (autoOptimizeAfter) {
         setAutoOptimizeToken((n) => n + 1);
       }
@@ -887,22 +944,37 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
         {backtest && fetchedRange && (
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
             {fetchedRange.source && (
-              <div className="flex items-center gap-2 text-[11px] text-slate-600 dark:text-slate-400">
-                <Database
-                  className="w-3.5 h-3.5 text-emerald-500 shrink-0"
-                  aria-hidden="true"
-                />
-                <span>
-                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                    {fetchedRange.symbol}
-                  </span>{' '}
-                  ·{' '}
-                  {fetchedRange.source === 'database'
-                    ? 'Served instantly from local historical DB (0 Fyers API calls)'
-                    : fetchedRange.source === 'hybrid'
-                    ? 'Loaded from local DB + synced missing dates from Fyers'
-                    : 'Fetched from Fyers and saved permanently to local DB'}
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Database
+                    className="w-3.5 h-3.5 text-emerald-500 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      {fetchedRange.symbol}
+                    </span>{' '}
+                    ·{' '}
+                    {fetchedRange.source === 'database'
+                      ? 'Served instantly from local historical DB (0 Fyers API calls)'
+                      : fetchedRange.source === 'hybrid'
+                      ? 'Loaded from local DB + synced missing dates from Fyers'
+                      : 'Fetched from Fyers and saved permanently to local DB'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleRunBacktest(false, true)}
+                  title="Re-download fresh official 5-min candles from Fyers and overwrite local cache for this date range"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-[#161D2B] border border-slate-200 dark:border-slate-700 hover:bg-slate-200/70 dark:hover:bg-[#1F293B] disabled:opacity-50 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span>Refresh from Fyers</span>
+                </button>
               </div>
             )}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1001,8 +1073,14 @@ export const YearlyBacktestView: React.FC<YearlyBacktestViewProps> = ({
       {/* Vertical Top-of-Page Strategy Configuration */}
       <StrategyControls
         config={config}
-        onChange={onChangeConfig}
-        onResetDefaults={onResetDefaults}
+        onChange={(next) => onChangeConfig(next)}
+        onResetDefaults={() => {
+          onResetDefaults();
+          onChangeConfig({
+            ...DEFAULT_STRATEGY_CONFIG,
+            lotSize: backtestInstrumentMeta.lotSize,
+          });
+        }}
         hasUnsavedChanges={hasUnsavedChanges}
         justSaved={justSaved}
         onSave={onSaveConfig}

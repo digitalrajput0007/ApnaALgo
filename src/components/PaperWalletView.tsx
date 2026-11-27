@@ -799,13 +799,13 @@ export const PaperWalletView: React.FC<PaperWalletViewProps> = ({
               </label>
               <input
                 id="custom-wallet-balance"
-                type="number"
+                type="text"
                 inputMode="numeric"
-                min={1000}
-                max={1000000000}
-                step={1}
+                autoComplete="off"
                 value={capitalInput}
-                onChange={(e) => setCapitalInput(e.target.value)}
+                onChange={(e) =>
+                  setCapitalInput(e.target.value.replace(/[^\d]/g, ''))
+                }
                 placeholder="e.g. 100000"
                 className={inputCls}
               />
@@ -829,13 +829,13 @@ export const PaperWalletView: React.FC<PaperWalletViewProps> = ({
               </label>
               <input
                 id="max-lots-cap"
-                type="number"
+                type="text"
                 inputMode="numeric"
-                min={1}
-                max={500}
-                step={1}
+                autoComplete="off"
                 value={maxLotsInput}
-                onChange={(e) => setMaxLotsInput(e.target.value)}
+                onChange={(e) =>
+                  setMaxLotsInput(e.target.value.replace(/[^\d]/g, ''))
+                }
                 placeholder="e.g. 25"
                 className={inputCls}
               />
@@ -883,13 +883,19 @@ export const PaperWalletView: React.FC<PaperWalletViewProps> = ({
               </div>
               <input
                 id="risk-per-trade-input"
-                type="number"
-                inputMode="decimal"
-                min={wallet.riskMode === 'PERCENT_CAPITAL' ? 0.1 : 100}
-                max={wallet.riskMode === 'PERCENT_CAPITAL' ? 50 : 100000000}
-                step={wallet.riskMode === 'PERCENT_CAPITAL' ? 0.1 : 1}
+                type="text"
+                inputMode={
+                  wallet.riskMode === 'PERCENT_CAPITAL' ? 'decimal' : 'numeric'
+                }
+                autoComplete="off"
                 value={tradeRiskInput}
-                onChange={(e) => setTradeRiskInput(e.target.value)}
+                onChange={(e) =>
+                  setTradeRiskInput(
+                    wallet.riskMode === 'PERCENT_CAPITAL'
+                      ? e.target.value.replace(/[^\d.]/g, '')
+                      : e.target.value.replace(/[^\d]/g, '')
+                  )
+                }
                 placeholder={
                   wallet.riskMode === 'PERCENT_CAPITAL' ? 'e.g. 2' : 'e.g. 2000'
                 }
@@ -946,13 +952,19 @@ export const PaperWalletView: React.FC<PaperWalletViewProps> = ({
               </div>
               <input
                 id="risk-per-day-input"
-                type="number"
-                inputMode="decimal"
-                min={dailyRiskMode === 'PERCENT_CAPITAL' ? 0.25 : 200}
-                max={dailyRiskMode === 'PERCENT_CAPITAL' ? 50 : 100000000}
-                step={dailyRiskMode === 'PERCENT_CAPITAL' ? 0.25 : 1}
+                type="text"
+                inputMode={
+                  dailyRiskMode === 'PERCENT_CAPITAL' ? 'decimal' : 'numeric'
+                }
+                autoComplete="off"
                 value={dailyRiskInput}
-                onChange={(e) => setDailyRiskInput(e.target.value)}
+                onChange={(e) =>
+                  setDailyRiskInput(
+                    dailyRiskMode === 'PERCENT_CAPITAL'
+                      ? e.target.value.replace(/[^\d.]/g, '')
+                      : e.target.value.replace(/[^\d]/g, '')
+                  )
+                }
                 placeholder={
                   dailyRiskMode === 'PERCENT_CAPITAL' ? 'e.g. 5' : 'e.g. 5000'
                 }
@@ -1165,11 +1177,13 @@ export const PaperWalletView: React.FC<PaperWalletViewProps> = ({
                   Test LTP (optional)
                 </label>
                 <input
-                  type="number"
-                  min={1}
-                  step={0.5}
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
                   value={manualOptionLtp}
-                  onChange={(e) => setManualOptionLtp(e.target.value)}
+                  onChange={(e) =>
+                    setManualOptionLtp(e.target.value.replace(/[^\d.]/g, ''))
+                  }
                   placeholder="Auto live"
                   className="w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />

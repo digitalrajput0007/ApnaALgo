@@ -1,7 +1,19 @@
 import { WebSocket } from 'ws';
+import {
+  DEFAULT_STRATEGY_CONFIG,
+  isLastCandleFormingNow,
+  runNiftyStrategy,
+} from '../src/engine/niftyStrategy';
+import { StrategyConfig } from '../src/types/strategy';
 import { normalizeFyersSymbol } from '../src/utils/fyersSymbols';
+import { getFallbackInstrumentMeta } from '../src/utils/optionsEngine';
 import { candleStore } from './candleStore';
 import { PersistedLiveStreamState, saasStore } from './saasStore';
+import {
+  TelegramAlertEventType,
+  TelegramAlertPayload,
+  TelegramDeliveryLogEntry,
+} from './telegramService';
 
 export interface StreamCandleBar {
   index: number;
@@ -56,6 +68,15 @@ export interface LiveStreamDependencies {
   ) => Promise<Record<string, StreamQuoteTick>>;
   getCurrentIstDate: () => string;
   formatIstHHMM: (epochSec: number) => string;
+  dispatchTelegramAlert?: (
+    userId: string,
+    payload: TelegramAlertPayload
+  ) => Promise<{
+    ok?: boolean;
+    skipped?: boolean;
+    reason?: string;
+    logEntry?: TelegramDeliveryLogEntry;
+  }>;
 }
 
 interface ActiveUserStream {
@@ -69,6 +90,9 @@ interface ActiveUserStream {
   candles: StreamCandleBar[];
   lastError: string | null;
   lastSyncedBucket: string;
+  initialHistorySyncDone: boolean;
+  alertBaselineSeededDate: string | null;
+  alertSeenKeys: Set<string>;
   pollTimer: NodeJS.Timeout | null;
   pollingInFlight: boolean;
   clients: Set<WebSocket>;
@@ -200,6 +224,9 @@ export class LiveStreamManager {
       candles: cachedToday.length > 0 ? [...cachedToday] : [],
       lastError: null,
       lastSyncedBucket: '',
+      initialHistorySyncDone: false,
+      alertBaselineSeededDate: null,
+      alertSeenKeys: new Set<string>(),
       pollTimer: null,
       pollingInFlight: false,
       clients: preservedClients,
@@ -422,6 +449,198 @@ export class LiveStreamManager {
     }
   }
 
+  private resolveStrategyConfigForSymbol(
+    userId: string,
+    symbol: string
+  ): StrategyConfig {
+    const workspace = saasStore.getWorkspace(userId);
+    const normalizedSymbol = normalizeFyersSymbol(symbol);
+    const attachedRaw = workspace.perIndexConfigs?.[normalizedSymbol];
+    if (attachedRaw && typeof attachedRaw === 'object') {
+      return {
+        ...DEFAULT_STRATEGY_CONFIG,
+        ...(attachedRaw as Partial<StrategyConfig>),
+      };
+    }
+
+    const fallbackMeta = getFallbackInstrumentMeta(normalizedSymbol);
+    const globalRaw =
+      workspace.strategyConfig && typeof workspace.strategyConfig === 'object'
+        ? (workspace.strategyConfig as Partial<StrategyConfig>)
+        : {};
+    const lotSize =
+      normalizedSymbol === 'NSE:NIFTY50-INDEX' &&
+      typeof globalRaw.lotSize === 'number' &&
+      globalRaw.lotSize > 0
+        ? globalRaw.lotSize
+        : fallbackMeta.lotSize;
+
+    return {
+      ...DEFAULT_STRATEGY_CONFIG,
+      ...globalRaw,
+      lotSize,
+    };
+  }
+
+  /**
+   * Headless server-side strategy evaluation & Telegram alert dispatcher.
+   * Runs inside Node.js on every live stream poll cycle so alerts deliver
+   * immediately even when the user's browser tab is closed or sleeping.
+   */
+  private async evaluateAndDispatchTelegramAlerts(
+    stream: ActiveUserStream
+  ): Promise<void> {
+    if (!this.deps?.dispatchTelegramAlert) return;
+    if (!stream.initialHistorySyncDone) return;
+
+    const normalizedSymbol = normalizeFyersSymbol(stream.symbol);
+    const sessionDate =
+      stream.candles.find((c) => c.date)?.date || stream.date;
+
+    // If no candles yet (e.g. stream started before 09:15 IST), mark today's empty baseline
+    // so the very first 09:35 Bias confirmation fires immediately.
+    if (stream.candles.length === 0) {
+      if (stream.alertBaselineSeededDate !== stream.date) {
+        stream.alertBaselineSeededDate = stream.date;
+        stream.alertSeenKeys.clear();
+      }
+      return;
+    }
+
+    const strategyConfig = this.resolveStrategyConfigForSymbol(
+      stream.userId,
+      normalizedSymbol
+    );
+    const lastCandleIsForming = isLastCandleFormingNow(
+      stream.candles,
+      true,
+      stream.latestQuote
+    );
+    const evalResult = runNiftyStrategy(
+      stream.candles,
+      strategyConfig,
+      undefined,
+      undefined,
+      { lastCandleIsForming }
+    );
+
+    const streamSessionId = `${stream.userId}|${normalizedSymbol}|${sessionDate}`;
+    const candidatePayloads: TelegramAlertPayload[] = [];
+
+    if (
+      evalResult.finalBias !== 'PENDING' &&
+      evalResult.biasDecidedSet !== null &&
+      evalResult.biasDecidedTime
+    ) {
+      const decidingSet = evalResult.sets.find(
+        (s) => s.setNumber === evalResult.biasDecidedSet
+      );
+      candidatePayloads.push({
+        eventKey: `${streamSessionId}|BIAS|${evalResult.finalBias}|set${evalResult.biasDecidedSet}`,
+        eventType: 'BIAS_CONFIRMED',
+        symbol: normalizedSymbol,
+        sessionDate,
+        time: evalResult.biasDecidedTime,
+        bias: {
+          direction: evalResult.finalBias,
+          setNumber: evalResult.biasDecidedSet,
+          greenCount: decidingSet?.greenCount ?? 0,
+          redCount: decidingSet?.redCount ?? 0,
+          rsiLength: strategyConfig.rsiLength,
+          rsiThreshold:
+            evalResult.finalBias === 'BULLISH'
+              ? strategyConfig.rsiBuyThreshold
+              : strategyConfig.rsiSellThreshold,
+        },
+      });
+    }
+
+    const lotQty = strategyConfig.lotSize * strategyConfig.lots;
+    for (const trade of evalResult.trades) {
+      candidatePayloads.push({
+        eventKey: `${streamSessionId}|ENTRY|t${trade.id}|${trade.entryTime}`,
+        eventType: 'ENTRY_CONFIRMED',
+        symbol: normalizedSymbol,
+        sessionDate: trade.date || sessionDate,
+        time: trade.entryTime,
+        trade: {
+          id: trade.id,
+          direction: trade.direction,
+          entryPrice: trade.entryPrice,
+          stopLossPrice: trade.initialSlPrice,
+          targetPrice: trade.targetPrice,
+          signalRsi: trade.signalRsi,
+          lotQty,
+        },
+      });
+
+      if (trade.exitReason !== 'OPEN' && trade.exitTime) {
+        const exitEventType: TelegramAlertEventType =
+          trade.exitReason === 'TARGET_HIT'
+            ? 'TARGET_HIT'
+            : trade.exitReason === 'STRICT_SL_HIT'
+            ? 'SL_HIT'
+            : trade.exitReason === 'TRAILED_COST_EXIT'
+            ? 'TRAILED_COST_EXIT'
+            : 'EOD_SQUARE_OFF';
+
+        candidatePayloads.push({
+          eventKey: `${streamSessionId}|EXIT|t${trade.id}|${trade.exitReason}|${trade.exitTime}`,
+          eventType: exitEventType,
+          symbol: normalizedSymbol,
+          sessionDate: trade.date || sessionDate,
+          time: trade.exitTime,
+          trade: {
+            id: trade.id,
+            direction: trade.direction,
+            entryPrice: trade.entryPrice,
+            stopLossPrice: trade.currentSlPrice,
+            targetPrice: trade.targetPrice,
+            exitPrice: trade.exitPrice,
+            pnlPoints: trade.pnlPoints,
+            pnlRupees: trade.pnlRupees,
+            stopAfterTargetHit: strategyConfig.stopAfterTargetHit,
+            tradesUsed: evalResult.trades.length,
+            maxTradesPerDay: strategyConfig.maxTradesPerDay,
+            lotQty,
+          },
+        });
+      }
+    }
+
+    // First sync when stream starts mid-day: seed already-past events so we don't spam historical alerts
+    if (stream.alertBaselineSeededDate !== stream.date) {
+      stream.alertBaselineSeededDate = stream.date;
+      for (const p of candidatePayloads) {
+        stream.alertSeenKeys.add(p.eventKey);
+      }
+      return;
+    }
+
+    const newlyConfirmed = candidatePayloads.filter(
+      (p) => !stream.alertSeenKeys.has(p.eventKey)
+    );
+    if (newlyConfirmed.length === 0) return;
+
+    for (const payload of newlyConfirmed) {
+      stream.alertSeenKeys.add(payload.eventKey);
+      try {
+        const outcome = await this.deps.dispatchTelegramAlert(
+          stream.userId,
+          payload
+        );
+        if (outcome?.logEntry) {
+          this.broadcast(stream, {
+            type: 'telegram_delivery',
+            logEntry: outcome.logEntry,
+          });
+        }
+      } catch {
+        // Non-fatal Telegram delivery failure; keep live stream running
+      }
+    }
+  }
+
   private async runPollTick(stream: ActiveUserStream): Promise<void> {
     if (!this.deps) return;
     // Verify stream is still the active instance for this user
@@ -435,6 +654,9 @@ export class LiveStreamManager {
         stream.date = todayIst;
         stream.candles = [];
         stream.lastSyncedBucket = '';
+        // New trading day rollover: start with an empty baseline so all morning signals fire
+        stream.alertBaselineSeededDate = todayIst;
+        stream.alertSeenKeys.clear();
       }
 
       const nowIst = this.deps.formatIstHHMM(Math.floor(Date.now() / 1000));
@@ -452,6 +674,7 @@ export class LiveStreamManager {
             stream.symbol,
             stream.date
           );
+          stream.initialHistorySyncDone = true;
           if (candles.length > 0) {
             candleStore.upsertCandles(stream.symbol, candles);
             stream.candles = candles;
@@ -463,6 +686,9 @@ export class LiveStreamManager {
             });
           }
         } catch (histErr) {
+          if (!stream.initialHistorySyncDone) {
+            stream.lastSyncedBucket = '';
+          }
           stream.lastError =
             histErr instanceof Error ? histErr.message : 'History sync failed';
         }
@@ -493,6 +719,9 @@ export class LiveStreamManager {
           this.broadcast(stream, { type: 'option_quote', data: optQuote });
         }
       }
+
+      // Evaluate strategy & dispatch Telegram alerts server-side (works with browser closed)
+      await this.evaluateAndDispatchTelegramAlerts(stream);
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Fyers stream poll error';

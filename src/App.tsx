@@ -58,6 +58,7 @@ import { generatePythonNeoAlgo } from './engine/codeGenerator';
 import {
   DEFAULT_STRATEGY_CONFIG,
   getScenarioPresets,
+  isLastCandleFormingNow,
   runNiftyStrategy,
 } from './engine/niftyStrategy';
 import { FyersQuoteTick, useFyersLiveFeed } from './hooks/useFyersLiveFeed';
@@ -226,10 +227,17 @@ export default function App() {
   );
   const [selectedScenarioId, setSelectedScenarioId] =
     useState<string>('today_bullish');
+  const [loadedLabSymbol, setLoadedLabSymbol] = useState<string | null>(null);
+  const [globalDefaultConfig, setGlobalDefaultConfig] = useState<StrategyConfig>(
+    DEFAULT_STRATEGY_CONFIG
+  );
   const [savedConfig, setSavedConfig] = useState<StrategyConfig>(
     DEFAULT_STRATEGY_CONFIG
   );
   const [config, setConfig] = useState<StrategyConfig>(DEFAULT_STRATEGY_CONFIG);
+  const [backtestConfig, setBacktestConfig] = useState<StrategyConfig>(
+    DEFAULT_STRATEGY_CONFIG
+  );
   const [perIndexConfigs, setPerIndexConfigs] = useState<PerIndexStrategyMap>(
     {}
   );
@@ -262,12 +270,15 @@ export default function App() {
   // Hydrate per-user workspace from self-hosted SaaS backend when user signs in
   useEffect(() => {
     if (!userId) {
+      setGlobalDefaultConfig(DEFAULT_STRATEGY_CONFIG);
       setSavedConfig(DEFAULT_STRATEGY_CONFIG);
       setConfig(DEFAULT_STRATEGY_CONFIG);
+      setBacktestConfig(DEFAULT_STRATEGY_CONFIG);
       setPerIndexConfigs({});
       setServerSavedReports(null);
       setPresets(getScenarioPresets());
       setSelectedScenarioId('today_bullish');
+      setLoadedLabSymbol(null);
       setLabCalendarFeedback(null);
       return;
     }
@@ -275,8 +286,10 @@ export default function App() {
     let cancelled = false;
     const localFallback = loadSavedStrategyConfig(userId);
     const localPerIndex = loadPerIndexConfigs(userId);
+    setGlobalDefaultConfig(localFallback);
     setSavedConfig(localFallback);
     setConfig(localFallback);
+    setBacktestConfig(localFallback);
     setPerIndexConfigs(localPerIndex);
 
     (async () => {
@@ -318,8 +331,10 @@ export default function App() {
 
         if (data.strategyConfig && typeof data.strategyConfig === 'object') {
           const merged = { ...DEFAULT_STRATEGY_CONFIG, ...data.strategyConfig };
+          setGlobalDefaultConfig(merged);
           setSavedConfig(merged);
           setConfig(merged);
+          setBacktestConfig(merged);
           try {
             window.localStorage.setItem(
               `${SAVED_CONFIG_KEY}_${userId}`,
@@ -381,7 +396,10 @@ export default function App() {
         // Keep local copy
       });
     }
-    setSavedConfig(snapshot);
+    if (normalized === activeLabSymbol) {
+      setConfig(snapshot);
+      setSavedConfig(snapshot);
+    }
     setJustSavedConfig(true);
     toast.success(`Strategy attached to ${normalized}.`);
     if (saveTimerRef.current !== null) {
@@ -419,10 +437,16 @@ export default function App() {
     toast.info(`Detached custom strategy for ${normalized}.`);
   };
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = (overrideCfg?: StrategyConfig) => {
+    const isExplicitConfig = Boolean(
+      overrideCfg &&
+        typeof overrideCfg === 'object' &&
+        'stopLossPoints' in overrideCfg
+    );
+    const targetCfg = isExplicitConfig && overrideCfg ? overrideCfg : config;
     try {
       const key = userId ? `${SAVED_CONFIG_KEY}_${userId}` : SAVED_CONFIG_KEY;
-      window.localStorage.setItem(key, JSON.stringify(config));
+      window.localStorage.setItem(key, JSON.stringify(targetCfg));
     } catch {
       // Ignore storage quota errors
     }
@@ -431,12 +455,15 @@ export default function App() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ config: targetCfg }),
       }).catch(() => {
         // Ignore network error; local copy saved
       });
     }
-    setSavedConfig(config);
+    setGlobalDefaultConfig(targetCfg);
+    if (!isExplicitConfig) {
+      setSavedConfig(targetCfg);
+    }
     setJustSavedConfig(true);
     toast.success('Strategy parameters saved.');
     if (saveTimerRef.current !== null) {
@@ -649,16 +676,6 @@ export default function App() {
     formationSubStep,
   ]);
 
-  const result = useMemo(
-    () => runNiftyStrategy(effectiveCandles, config),
-    [effectiveCandles, config]
-  );
-
-  const lastCandle =
-    result.candles.length > 0
-      ? result.candles[result.candles.length - 1]
-      : null;
-
   const handleDownloadPython = () => {
     const pyCode = generatePythonNeoAlgo(config);
     const blob = new Blob([pyCode], { type: 'text/x-python;charset=utf-8' });
@@ -710,7 +727,8 @@ export default function App() {
   const handleLoadFyersCandles = (
     rawCandles: Candle[],
     label: string,
-    subtitle: string
+    subtitle: string,
+    symbol?: string
   ) => {
     const candles = normalizeSessionCandles(rawCandles);
     const liveId = 'fyers_live';
@@ -728,6 +746,9 @@ export default function App() {
       copy[idx] = nextPreset;
       return copy;
     });
+    if (symbol) {
+      setLoadedLabSymbol(normalizeFyersSymbol(symbol));
+    }
     setSelectedScenarioId(liveId);
     setSelectedTradeId(null);
     setIsPlaying(false);
@@ -743,11 +764,19 @@ export default function App() {
   ) => {
     const candles = normalizeSessionCandles(rawCandles);
     const liveId = 'fyers_live';
+    const lastBarIsCurrentlyForming = isLastCandleFormingNow(candles, true);
     setPresets((prev) => {
       const idx = prev.findIndex((p) => p.id === liveId);
       const existing = idx !== -1 ? prev[idx] : null;
       const merged = [...candles];
-      if (existing && existing.candles.length > 0 && merged.length > 0) {
+      // Only preserve live tick extremes on the currently forming 5-min bar;
+      // for all closed candles, trust official Fyers 5-min OHLC to match Backtest 100%.
+      if (
+        lastBarIsCurrentlyForming &&
+        existing &&
+        existing.candles.length > 0 &&
+        merged.length > 0
+      ) {
         const prevLast = existing.candles[existing.candles.length - 1];
         const nextLast = merged[merged.length - 1];
         if (prevLast.time === nextLast.time && prevLast.date === nextLast.date) {
@@ -771,6 +800,7 @@ export default function App() {
       copy[idx] = updated;
       return copy;
     });
+    setLoadedLabSymbol(normalizeFyersSymbol(symbol));
     setSelectedScenarioId(liveId);
     setReplayCount(candles.length);
   };
@@ -846,6 +876,7 @@ export default function App() {
       copy[idx] = updated;
       return copy;
     });
+    setLoadedLabSymbol(normalizeFyersSymbol(symbol));
     setSelectedScenarioId(liveId);
   };
 
@@ -856,6 +887,45 @@ export default function App() {
     onLiveTick: handleLiveFyersTick,
     onHistorySync: handleHistorySync,
   });
+
+  // Reset loadedLabSymbol override when user explicitly switches the Live Bar symbol selector
+  useEffect(() => {
+    setLoadedLabSymbol(null);
+  }, [fyersFeed.activeSymbol]);
+
+  const isLabLastCandleForming = useMemo(
+    () =>
+      (selectedScenarioId === 'fyers_live' &&
+        !isReplayActive &&
+        isLastCandleFormingNow(
+          effectiveCandles,
+          fyersFeed.isStreaming,
+          fyersFeed.latestQuote
+        )) ||
+      (isReplayActive && animateFormation && formationSubStep < 4),
+    [
+      selectedScenarioId,
+      isReplayActive,
+      animateFormation,
+      formationSubStep,
+      effectiveCandles,
+      fyersFeed.isStreaming,
+      fyersFeed.latestQuote,
+    ]
+  );
+
+  const result = useMemo(
+    () =>
+      runNiftyStrategy(effectiveCandles, config, undefined, undefined, {
+        lastCandleIsForming: isLabLastCandleForming,
+      }),
+    [effectiveCandles, config, isLabLastCandleForming]
+  );
+
+  const lastCandle =
+    result.candles.length > 0
+      ? result.candles[result.candles.length - 1]
+      : null;
 
   // Root-level Telegram alerts dispatcher monitoring Fyers live session across all tabs
   const liveFyersCandles = useMemo(
@@ -878,7 +948,7 @@ export default function App() {
   // Automatic F&O Futures Lot Size, Option Strike Step & Per-Index Attached Strategy loader
   const activeLabSymbol = normalizeFyersSymbol(
     selectedScenarioId === 'fyers_live'
-      ? fyersFeed.activeSymbol
+      ? loadedLabSymbol || fyersFeed.activeSymbol
       : 'NSE:NIFTY50-INDEX'
   );
   const [labInstrumentMeta, setLabInstrumentMeta] = useState<InstrumentMeta>(
@@ -891,15 +961,26 @@ export default function App() {
   // Auto-load attached per-index strategy whenever user switches active index/symbol
   useEffect(() => {
     const attached = perIndexConfigs[activeLabSymbol];
-    if (attached && lastAppliedAttachedSymbolRef.current !== activeLabSymbol) {
-      lastAppliedAttachedSymbolRef.current = activeLabSymbol;
+    if (lastAppliedAttachedSymbolRef.current === activeLabSymbol) return;
+    const hadPrevious = lastAppliedAttachedSymbolRef.current !== null;
+    lastAppliedAttachedSymbolRef.current = activeLabSymbol;
+
+    if (attached) {
       const merged = { ...DEFAULT_STRATEGY_CONFIG, ...attached };
+      lastAutoLotSymbolRef.current = activeLabSymbol;
       setConfig(merged);
       setSavedConfig(merged);
-    } else if (!attached) {
-      lastAppliedAttachedSymbolRef.current = activeLabSymbol;
+    } else if (hadPrevious) {
+      const fallbackMeta = getFallbackInstrumentMeta(activeLabSymbol);
+      const restored = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        ...globalDefaultConfig,
+        lotSize: fallbackMeta.lotSize,
+      };
+      setConfig(restored);
+      setSavedConfig(restored);
     }
-  }, [activeLabSymbol, perIndexConfigs]);
+  }, [activeLabSymbol, perIndexConfigs, globalDefaultConfig]);
 
   useEffect(() => {
     const fallback = getFallbackInstrumentMeta(activeLabSymbol);
@@ -1197,10 +1278,7 @@ export default function App() {
     return firstDated?.date || getTodayIstYYYYMMDD();
   };
 
-  const resolveSessionSymbol = () => {
-    if (selectedScenarioId === 'fyers_live') return fyersFeed.activeSymbol;
-    return 'NSE:NIFTY50-INDEX';
-  };
+  const resolveSessionSymbol = () => activeLabSymbol;
 
   const handleSaveLabSessionToCalendar = () => {
     if (result.trades.length === 0) return;
@@ -1279,7 +1357,18 @@ export default function App() {
     if (!userId || !fyersFeed.isStreaming || liveFyersCandles.length === 0) {
       return;
     }
-    const liveEval = runNiftyStrategy(liveFyersCandles, config);
+    const liveCandleIsForming = isLastCandleFormingNow(
+      liveFyersCandles,
+      fyersFeed.isStreaming,
+      fyersFeed.latestQuote
+    );
+    const liveEval = runNiftyStrategy(
+      liveFyersCandles,
+      config,
+      undefined,
+      undefined,
+      { lastCandleIsForming: liveCandleIsForming }
+    );
     if (liveEval.trades.length === 0) return;
 
     const fallbackDate =
@@ -1591,7 +1680,7 @@ export default function App() {
                 onResetDefaults={() => setConfig(DEFAULT_STRATEGY_CONFIG)}
                 hasUnsavedChanges={hasUnsavedConfig}
                 justSaved={justSavedConfig}
-                onSave={handleSaveConfig}
+                onSave={() => handleSaveConfig()}
                 onDiscard={handleDiscardConfig}
                 instrumentMeta={labInstrumentMeta}
                 loadingLotSize={loadingLabLotSize}
@@ -1886,13 +1975,17 @@ export default function App() {
           {isAdmin && activeTab === 'backtest1y' && (
             <YearlyBacktestView
               theme={theme}
-              config={config}
-              onChangeConfig={setConfig}
-              onResetDefaults={() => setConfig(DEFAULT_STRATEGY_CONFIG)}
-              hasUnsavedChanges={hasUnsavedConfig}
+              config={backtestConfig}
+              savedGlobalConfig={globalDefaultConfig}
+              onChangeConfig={setBacktestConfig}
+              onResetDefaults={() => setBacktestConfig(DEFAULT_STRATEGY_CONFIG)}
+              hasUnsavedChanges={
+                JSON.stringify(backtestConfig) !==
+                JSON.stringify(globalDefaultConfig)
+              }
               justSaved={justSavedConfig}
-              onSaveConfig={handleSaveConfig}
-              onDiscardConfig={handleDiscardConfig}
+              onSaveConfig={() => handleSaveConfig(backtestConfig)}
+              onDiscardConfig={() => setBacktestConfig(globalDefaultConfig)}
               userId={userId}
               serverSavedReports={serverSavedReports}
               perIndexConfigs={perIndexConfigs}
@@ -1925,10 +2018,17 @@ export default function App() {
               }}
               onOpenCalendar={(month, date) => handleOpenCalendar(month, date)}
               onInspectDay={(candles, date, symbol) => {
+                const normalized = normalizeFyersSymbol(symbol);
+                // Copy the exact Backtest Strategy Configuration into Strategy Lab for 100% parity
+                lastAppliedAttachedSymbolRef.current = normalized;
+                lastAutoLotSymbolRef.current = normalized;
+                setConfig(backtestConfig);
+                setSavedConfig(backtestConfig);
                 handleLoadFyersCandles(
                   candles,
-                  `${symbol} · ${date}`,
-                  `${candles.length} real 5-min bars from ${date}`
+                  `${normalized} · ${date}`,
+                  `${candles.length} real 5-min bars from ${date}`,
+                  normalized
                 );
               }}
             />

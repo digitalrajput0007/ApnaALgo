@@ -21,6 +21,8 @@ interface SymbolCandleDbFile {
   days: Record<string, StoredCandleBar[]>;
   /** Confirmed past holidays/weekends/no-data dates so we skip re-fetching them */
   emptyDates: Record<string, true>;
+  /** Dates confirmed as complete historical downloads (not partial intraday live snapshots) */
+  completeDays?: Record<string, true>;
 }
 
 export interface DateGapRange {
@@ -105,6 +107,10 @@ class CandleDatabaseStore {
             parsed.emptyDates && typeof parsed.emptyDates === 'object'
               ? parsed.emptyDates
               : {},
+          completeDays:
+            parsed.completeDays && typeof parsed.completeDays === 'object'
+              ? parsed.completeDays
+              : {},
         };
         this.memCache.set(key, db);
         return db;
@@ -118,6 +124,7 @@ class CandleDatabaseStore {
       updatedAt: Date.now(),
       days: {},
       emptyDates: {},
+      completeDays: {},
     };
     this.memCache.set(key, fresh);
     return fresh;
@@ -153,7 +160,15 @@ class CandleDatabaseStore {
 
     if (dateStr < todayIst) {
       if (storedBars && storedBars.length > 0) {
-        return { hit: true, candles: storedBars };
+        const lastBar = storedBars[storedBars.length - 1];
+        const isConfirmedComplete =
+          Boolean(db.completeDays?.[dateStr]) ||
+          (Boolean(lastBar) && lastBar.time >= '15:15');
+        if (isConfirmedComplete) {
+          return { hit: true, candles: storedBars };
+        }
+        // Incomplete partial intraday snapshot from a previous live session: re-fetch full day
+        return { hit: false, candles: [] };
       }
       if (db.emptyDates[dateStr] || isWeekendDate(dateStr)) {
         return { hit: true, candles: [] };
@@ -181,6 +196,7 @@ class CandleDatabaseStore {
     coveredRange?: { fromDate: string; toDate: string; todayIst: string }
   ): void {
     const db = this.loadSymbolDb(symbol);
+    if (!db.completeDays) db.completeDays = {};
     const grouped = new Map<string, StoredCandleBar[]>();
 
     for (const c of candles) {
@@ -193,11 +209,23 @@ class CandleDatabaseStore {
     let dirty = false;
 
     for (const [dateStr, bars] of grouped.entries()) {
-      const normalized = deduplicateAndSortDay(bars);
+      // When upserting partial intraday live bars (no coveredRange), merge with existing bars
+      const combined = coveredRange
+        ? bars
+        : [...(db.days[dateStr] || []), ...bars];
+      const normalized = deduplicateAndSortDay(combined);
       if (normalized.length > 0) {
         db.days[dateStr] = normalized;
         if (db.emptyDates[dateStr]) {
           delete db.emptyDates[dateStr];
+        }
+        if (coveredRange && dateStr < coveredRange.todayIst) {
+          db.completeDays[dateStr] = true;
+        } else if (
+          normalized[normalized.length - 1] &&
+          normalized[normalized.length - 1].time >= '15:25'
+        ) {
+          db.completeDays[dateStr] = true;
         }
         dirty = true;
       }

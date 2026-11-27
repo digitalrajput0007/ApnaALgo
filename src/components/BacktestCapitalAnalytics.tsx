@@ -36,6 +36,7 @@ import {
   TraderJourneyResult,
   TraderJourneySettings,
 } from '../utils/tradingCosts';
+import { NumericInput } from './NumericInput';
 
 export type CapitalGranularity = 'trade' | 'day' | 'month';
 type ChartViewStyle = 'combined' | 'equity';
@@ -259,47 +260,37 @@ export const BacktestCapitalAnalytics: React.FC<
           {/* Risk % & Max Lots Cap (Compounding Mode) */}
           {journeySettings.sizingMode === 'compounding_risk' && (
             <>
-              <label className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+              <div className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                 <span className="whitespace-nowrap">Risk/Trade</span>
-                <input
-                  type="number"
-                  min={0.5}
-                  max={10}
-                  step={0.5}
+                <NumericInput
                   value={journeySettings.riskPerTradePct}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (Number.isFinite(v) && v >= 0.25 && v <= 20) {
-                      updateSetting('riskPerTradePct', v);
-                    }
-                  }}
-                  aria-label="Risk per trade percentage"
-                  className="w-14 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  min={0.1}
+                  max={25}
+                  allowDecimal
+                  decimals={2}
+                  showRangeHint={false}
+                  ariaLabel="Risk per trade percentage"
+                  onChange={(v) => updateSetting('riskPerTradePct', v)}
+                  className="w-16 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
                 <span>%</span>
-              </label>
+              </div>
 
-              <label
+              <div
                 className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400"
-                title="Upper cap on lots per trade to reflect realistic NSE retail liquidity"
+                title="Upper cap on lots per trade to reflect realistic NSE/BSE retail liquidity"
               >
                 <span className="whitespace-nowrap">Max Lots</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
+                <NumericInput
                   value={journeySettings.maxLotsCap}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (Number.isFinite(v) && v >= 1 && v <= 200) {
-                      updateSetting('maxLotsCap', v);
-                    }
-                  }}
-                  aria-label="Maximum lots cap"
-                  className="w-14 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  min={1}
+                  max={1000}
+                  showRangeHint={false}
+                  ariaLabel="Maximum lots cap"
+                  onChange={(v) => updateSetting('maxLotsCap', v)}
+                  className="w-16 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
-              </label>
+              </div>
             </>
           )}
         </div>
@@ -320,51 +311,43 @@ export const BacktestCapitalAnalytics: React.FC<
 
           {journeySettings.includeCosts && (
             <>
-              <label
+              <div
                 className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400"
                 title="Brokerage charged per executed order (2 orders = 1 round-trip trade)"
               >
                 <span className="whitespace-nowrap">Brokerage ₹</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={200}
-                  step={5}
+                <NumericInput
                   value={journeySettings.brokeragePerOrder}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (Number.isFinite(v) && v >= 0 && v <= 500) {
-                      updateSetting('brokeragePerOrder', v);
-                    }
-                  }}
-                  aria-label="Brokerage per order in rupees"
-                  className="w-14 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  min={0}
+                  max={500}
+                  allowDecimal
+                  decimals={2}
+                  showRangeHint={false}
+                  ariaLabel="Brokerage per order in rupees"
+                  onChange={(v) => updateSetting('brokeragePerOrder', v)}
+                  className="w-16 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
                 <span className="text-[11px] text-slate-400">/ord</span>
-              </label>
+              </div>
 
-              <label
+              <div
                 className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-400"
                 title="Round-trip bid-ask + market order fill slippage in points on the traded instrument"
               >
                 <span className="whitespace-nowrap">Slippage</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.25}
+                <NumericInput
                   value={journeySettings.slippagePoints}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (Number.isFinite(v) && v >= 0 && v <= 20) {
-                      updateSetting('slippagePoints', v);
-                    }
-                  }}
-                  aria-label="Round-trip slippage in points"
-                  className="w-14 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  min={0}
+                  max={50}
+                  allowDecimal
+                  decimals={2}
+                  showRangeHint={false}
+                  ariaLabel="Round-trip slippage in points"
+                  onChange={(v) => updateSetting('slippagePoints', v)}
+                  className="w-16 px-2 py-1 text-xs font-mono tabular-nums text-right text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
                 <span className="text-[11px] text-slate-400">pts</span>
-              </label>
+              </div>
             </>
           )}
 

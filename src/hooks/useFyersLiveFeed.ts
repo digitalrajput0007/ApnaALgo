@@ -53,7 +53,12 @@ export const FYERS_SYMBOL_OPTIONS = FYERS_INDEX_PRESETS.map((p) => p.symbol);
 
 export interface UseFyersLiveFeedOptions {
   authUserId?: string | null;
-  onLoadCandles: (candles: Candle[], label: string, subtitle: string) => void;
+  onLoadCandles: (
+    candles: Candle[],
+    label: string,
+    subtitle: string,
+    symbol?: string
+  ) => void;
   onLiveTick: (tick: FyersQuoteTick, symbol: string) => void;
   onHistorySync: (candles: Candle[], symbol: string, date: string) => void;
 }
@@ -581,7 +586,8 @@ export function useFyersLiveFeed({
         onLoadCandlesRef.current(
           candles,
           `Fyers: ${data.symbol || sym} (${data.date || dt})`,
-          `${candles.length} real 5-min bars · ${sourceTag} · ${data.date || dt}`
+          `${candles.length} real 5-min bars · ${sourceTag} · ${data.date || dt}`,
+          data.symbol || sym
         );
         setInfoMsg(
           `Loaded ${candles.length} 5-min bars for ${data.symbol || sym} (${

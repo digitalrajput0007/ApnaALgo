@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { runNiftyStrategy } from '../engine/niftyStrategy';
+import {
+  isLastCandleFormingNow,
+  runNiftyStrategy,
+} from '../engine/niftyStrategy';
 import { Candle, StrategyConfig } from '../types/strategy';
+import { normalizeFyersSymbol } from '../utils/fyersSymbols';
 
 export type TelegramChatType = 'private' | 'group' | 'channel';
 
@@ -373,7 +377,13 @@ export function useTelegramAlerts({
   // Compute live strategy state independently of active tab so alerts run continuously
   const liveStrategyResult = useMemo(() => {
     if (!isLiveStreaming || liveCandles.length === 0) return null;
-    return runNiftyStrategy(liveCandles, strategyConfig);
+    const lastCandleIsForming = isLastCandleFormingNow(
+      liveCandles,
+      isLiveStreaming
+    );
+    return runNiftyStrategy(liveCandles, strategyConfig, undefined, undefined, {
+      lastCandleIsForming,
+    });
   }, [isLiveStreaming, liveCandles, strategyConfig]);
 
   // Reset baseline marker whenever streaming stops
@@ -387,9 +397,10 @@ export function useTelegramAlerts({
   useEffect(() => {
     if (!userId || !isLiveStreaming || !liveStrategyResult) return;
 
+    const normalizedSymbol = normalizeFyersSymbol(activeSymbol);
     const sessionDate =
       liveCandles.find((c) => c.date)?.date || getTodayIstString();
-    const streamSessionId = `${userId}|${activeSymbol}|${sessionDate}`;
+    const streamSessionId = `${userId}|${normalizedSymbol}|${sessionDate}`;
 
     // Build all currently confirmed events from the live session
     const candidatePayloads: TelegramAlertPayload[] = [];
@@ -405,7 +416,7 @@ export function useTelegramAlerts({
       candidatePayloads.push({
         eventKey: `${streamSessionId}|BIAS|${liveStrategyResult.finalBias}|set${liveStrategyResult.biasDecidedSet}`,
         eventType: 'BIAS_CONFIRMED',
-        symbol: activeSymbol,
+        symbol: normalizedSymbol,
         sessionDate,
         time: liveStrategyResult.biasDecidedTime,
         bias: {
@@ -427,7 +438,7 @@ export function useTelegramAlerts({
       candidatePayloads.push({
         eventKey: `${streamSessionId}|ENTRY|t${trade.id}|${trade.entryTime}`,
         eventType: 'ENTRY_CONFIRMED',
-        symbol: activeSymbol,
+        symbol: normalizedSymbol,
         sessionDate: trade.date || sessionDate,
         time: trade.entryTime,
         trade: {
@@ -454,7 +465,7 @@ export function useTelegramAlerts({
         candidatePayloads.push({
           eventKey: `${streamSessionId}|EXIT|t${trade.id}|${trade.exitReason}|${trade.exitTime}`,
           eventType: exitEventType,
-          symbol: activeSymbol,
+          symbol: normalizedSymbol,
           sessionDate: trade.date || sessionDate,
           time: trade.exitTime,
           trade: {

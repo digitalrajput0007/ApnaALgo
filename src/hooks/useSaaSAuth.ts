@@ -27,6 +27,8 @@ export interface RecoveryOptionsResult {
 export function useSaaSAuth() {
   const [user, setUser] = useState<SaaSUser | null>(null);
   const [registeredUsers, setRegisteredUsers] = useState<number>(0);
+  const [devAutoLoginAvailable, setDevAutoLoginAvailable] =
+    useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -41,9 +43,11 @@ export function useSaaSAuth() {
         authenticated?: boolean;
         user?: SaaSUser | null;
         registeredUsers?: number;
+        devAutoLoginAvailable?: boolean;
       };
       setUser(data.authenticated && data.user ? data.user : null);
       setRegisteredUsers(data.registeredUsers ?? 0);
+      setDevAutoLoginAvailable(Boolean(data.devAutoLoginAvailable));
     } catch {
       setUser(null);
     } finally {
@@ -127,6 +131,30 @@ export function useSaaSAuth() {
     }
     setPendingRecoveryKeyBanner(null);
     setUser(null);
+  }, []);
+
+  const resumeDevPreview = useCallback(async () => {
+    setAuthError(null);
+    setSubmitting(true);
+    try {
+      const resp = await fetch('/api/auth/dev-resume', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = (await resp.json()) as { user?: SaaSUser; error?: string };
+      if (!resp.ok || !data.user) {
+        throw new Error(data.error || 'Could not resume dev preview.');
+      }
+      setUser(data.user);
+      return true;
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : 'Could not resume dev preview.'
+      );
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
   }, []);
 
   const updateProfile = useCallback(
@@ -329,6 +357,7 @@ export function useSaaSAuth() {
     user,
     isAdmin: user?.role === 'owner',
     registeredUsers,
+    devAutoLoginAvailable,
     loading,
     authError,
     submitting,
@@ -338,6 +367,7 @@ export function useSaaSAuth() {
     login,
     register,
     logout,
+    resumeDevPreview,
     refreshSession,
     updateProfile,
     changePassword,

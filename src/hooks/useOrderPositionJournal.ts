@@ -401,28 +401,53 @@ export function useOrderPositionJournal(
         const incomingKeys = new Set(incoming.positions.map((p) => p.tradeKey));
         const existingPosKeys = new Set(prev.positions.map((p) => p.tradeKey));
 
-        for (const key of incomingKeys) {
-          if (!existingPosKeys.has(key)) newlyAdded += 1;
-        }
-
-        // Replace positions & orders matching incoming tradeKeys (so OPEN -> CLOSED updates cleanly)
+        // Strict single-open-trade guard: if another trade is already OPEN (with a different tradeKey),
+        // block any newly arriving OPEN trade until the existing open trade hits SL, Target, or is squared off.
         const keptPositions = prev.positions.filter(
           (p) => !incomingKeys.has(p.tradeKey)
         );
-        const keptOrders = prev.orders.filter(
-          (o) => !incomingKeys.has(o.tradeKey)
+        const alreadyHasAnotherOpenPosition = keptPositions.some(
+          (p) => p.status === 'OPEN'
         );
 
-        const mergedPositions = [...incoming.positions, ...keptPositions].sort(
-          (a, b) => {
-            if (a.status !== b.status) return a.status === 'OPEN' ? -1 : 1;
-            const dateCmp = b.date.localeCompare(a.date);
-            if (dateCmp !== 0) return dateCmp;
-            return b.entryTime.localeCompare(a.entryTime);
+        let openSlotTaken = alreadyHasAnotherOpenPosition;
+        const allowedIncomingPositions: RecordedPosition[] = [];
+        const allowedIncomingKeys = new Set<string>();
+
+        for (const pos of incoming.positions) {
+          if (pos.status === 'OPEN') {
+            if (openSlotTaken) {
+              // Skip simultaneous second open position
+              continue;
+            }
+            openSlotTaken = true;
           }
+          allowedIncomingPositions.push(pos);
+          allowedIncomingKeys.add(pos.tradeKey);
+        }
+
+        for (const key of allowedIncomingKeys) {
+          if (!existingPosKeys.has(key)) newlyAdded += 1;
+        }
+
+        const allowedIncomingOrders = incoming.orders.filter((o) =>
+          allowedIncomingKeys.has(o.tradeKey)
+        );
+        const keptOrders = prev.orders.filter(
+          (o) => !allowedIncomingKeys.has(o.tradeKey)
         );
 
-        const mergedOrders = [...incoming.orders, ...keptOrders].sort(
+        const mergedPositions = [
+          ...allowedIncomingPositions,
+          ...keptPositions,
+        ].sort((a, b) => {
+          if (a.status !== b.status) return a.status === 'OPEN' ? -1 : 1;
+          const dateCmp = b.date.localeCompare(a.date);
+          if (dateCmp !== 0) return dateCmp;
+          return b.entryTime.localeCompare(a.entryTime);
+        });
+
+        const mergedOrders = [...allowedIncomingOrders, ...keptOrders].sort(
           (a, b) => {
             const dateCmp = b.date.localeCompare(a.date);
             if (dateCmp !== 0) return dateCmp;

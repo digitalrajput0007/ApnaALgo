@@ -669,13 +669,14 @@ export const AdminUsersView: React.FC = () => {
                   Paper Wallet Virtual Money (₹)
                 </span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   required
-                  min={1000}
-                  max={1000000000}
-                  step={1}
                   value={newVirtualMoney}
-                  onChange={(e) => setNewVirtualMoney(e.target.value)}
+                  onChange={(e) =>
+                    setNewVirtualMoney(e.target.value.replace(/[^\d]/g, ''))
+                  }
                   placeholder="100000"
                   className={`${inputCls} font-mono tabular-nums`}
                 />
@@ -991,12 +992,15 @@ export const AdminUsersView: React.FC = () => {
                     {isEditingWallet ? (
                       <div className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-[#161D2B] p-1 rounded-lg border border-slate-200 dark:border-slate-700">
                         <input
-                          type="number"
-                          min={1000}
-                          max={1000000000}
-                          step={1}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
                           value={walletEditInput}
-                          onChange={(e) => setWalletEditInput(e.target.value)}
+                          onChange={(e) =>
+                            setWalletEditInput(
+                              e.target.value.replace(/[^\d]/g, '')
+                            )
+                          }
                           aria-label="Virtual wallet balance in rupees"
                           className="w-28 px-2 py-1 text-xs font-mono tabular-nums bg-white dark:bg-[#111622] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 rounded-md"
                         />

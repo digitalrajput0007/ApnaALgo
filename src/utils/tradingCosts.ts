@@ -57,7 +57,7 @@ export const DEFAULT_TRADER_JOURNEY_SETTINGS: Omit<
   includeCosts: true,
   brokeragePerOrder: 20,
   slippagePoints: 1.0,
-  sizingMode: 'compounding_risk',
+  sizingMode: 'fixed_lots',
   riskPerTradePct: 2,
   maxCapitalDeployPct: 80,
   maxLotsCap: 25,
@@ -79,13 +79,18 @@ export interface TradeCostBreakdown {
 }
 
 /**
- * Realistic ATM (0.5 delta) weekly/near-expiry option premium estimate
- * when backtesting from index spot/futures 5m candles (~0.65% of index spot).
- * Examples: Nifty 24,000 -> ~₹156 | Bank Nifty 52,000 -> ~₹338 | Sensex 80,000 -> ~₹520
+ * Realistic weekly/near-expiry option premium estimate scaled by delta
+ * when backtesting from index spot/futures 5m candles (~0.65% of spot at 0.50Δ ATM).
+ * Higher ITM delta (e.g. 0.70Δ) carries higher intrinsic premium and capital outlay.
  */
-export function estimateAtmOptionPremium(spotPrice: number): number {
+export function estimateAtmOptionPremium(
+  spotPrice: number,
+  optionDelta = 0.5
+): number {
   if (!Number.isFinite(spotPrice) || spotPrice <= 0) return 150;
-  return Math.max(40, Math.round(spotPrice * 0.0065));
+  const clampedDelta = Math.max(0.1, Math.min(1, optionDelta || 0.5));
+  const deltaMultiplier = Math.pow(clampedDelta / 0.5, 1.45);
+  return Math.max(30, Math.round(spotPrice * 0.0065 * deltaMultiplier));
 }
 
 /**
@@ -134,7 +139,7 @@ export function calculateTradeCosts(params: {
 
   if (instrumentType === 'NIFTY_ATM_OPT') {
     const rates = INDIAN_FO_RATES_2026.options;
-    const entryPrem = estimateAtmOptionPremium(entrySpotPrice);
+    const entryPrem = estimateAtmOptionPremium(entrySpotPrice, optionDelta);
     const rawExitPrem = entryPrem + pnlPoints * optionDelta - cleanSlippagePts;
     const exitPrem = Math.max(1, rawExitPrem);
 
@@ -360,7 +365,7 @@ export function simulateTraderCapitalJourney(
 
   const estimateMarginForSpot = (spot: number): number => {
     if (isOptionBuying) {
-      return estimateAtmOptionPremium(spot) * lotSize;
+      return estimateAtmOptionPremium(spot, deltaFactor) * lotSize;
     }
     return Math.round(
       Math.max(1, spot) * lotSize * INDIAN_FO_RATES_2026.futures.marginRate

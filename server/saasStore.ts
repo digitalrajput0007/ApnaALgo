@@ -543,6 +543,41 @@ class SaaSStore {
     return { user, recoveryKey };
   }
 
+  /**
+   * Development-only helper: returns the existing active primary owner account
+   * (preserving all existing workspace/broker settings), or bootstraps a local
+   * dev preview admin with a cryptographically random password if no owner exists yet.
+   * Must ONLY be called when server.ts confirms strict development preview mode.
+   */
+  getOrCreateDevPreviewAdmin(): SaaSUser {
+    const existingOwner = Array.from(this.users.values())
+      .filter((u) => u.role === 'owner' && u.status !== 'deactivated')
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
+    if (existingOwner) {
+      return existingOwner;
+    }
+
+    const email = 'admin@neoalgo.local';
+    const existingByEmail = this.usersByEmail.get(email);
+    if (existingByEmail) {
+      existingByEmail.role = 'owner';
+      existingByEmail.status = 'active';
+      existingByEmail.mustChangePassword = false;
+      this.persistUsers();
+      return existingByEmail;
+    }
+
+    const randomPassword = crypto.randomBytes(24).toString('hex');
+    const { user } = this.createUser('Admin (Dev Preview)', email, randomPassword);
+    user.role = 'owner';
+    user.status = 'active';
+    user.mustChangePassword = false;
+    user.subscriptionPlan = 'admin';
+    user.subscriptionExpiresAt = null;
+    this.persistUsers();
+    return user;
+  }
+
   createCustomerByAdmin(params: {
     name: string;
     email: string;

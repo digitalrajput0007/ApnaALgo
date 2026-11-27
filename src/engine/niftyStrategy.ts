@@ -46,6 +46,69 @@ export function getCandleColor(candle: Candle): CandleColor {
 }
 
 /**
+ * Returns true ONLY when a live stream is active and the final candle in `candles`
+ * belongs to the currently forming 5-minute NSE/BSE intraday bar (09:15–15:29 IST).
+ * Used so live ticks never confirm 4-candle Bias or arm new RSI setups on an unclosed
+ * bar before it actually closes—keeping Live Strategy Lab 100% aligned with Backtest.
+ */
+export function isLastCandleFormingNow(
+  candles: Candle[],
+  isLiveStreaming: boolean,
+  latestTick?: { istDate?: string; istTime?: string; epoch?: number } | null
+): boolean {
+  if (!isLiveStreaming || candles.length === 0) return false;
+  const last = candles[candles.length - 1];
+  if (!last || !last.time) return false;
+
+  const now = new Date();
+  const nowSec = Math.floor(now.getTime() / 1000);
+  const tickIsFresh = Boolean(
+    latestTick?.istTime &&
+      /^\d{2}:\d{2}/.test(latestTick.istTime) &&
+      (!latestTick.epoch || Math.abs(nowSec - latestTick.epoch) < 90)
+  );
+
+  const todayIst =
+    (tickIsFresh && latestTick?.istDate) ||
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+
+  if (last.date && last.date !== todayIst) return false;
+
+  let hh: number;
+  let mm: number;
+  if (tickIsFresh && latestTick?.istTime) {
+    const [hStr, mStr] = latestTick.istTime.split(':');
+    hh = Number(hStr);
+    mm = Number(mStr);
+  } else {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+    hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+    mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  }
+
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
+  const nowMins = hh * 60 + mm;
+  if (nowMins < 9 * 60 + 15 || nowMins >= 15 * 60 + 30) return false;
+
+  const bucketMin = Math.floor(mm / 5) * 5;
+  const currentBucketTime = `${String(hh).padStart(2, '0')}:${String(
+    bucketMin
+  ).padStart(2, '0')}`;
+
+  return last.time >= currentBucketTime;
+}
+
+/**
  * Standard Wilder's Smoothing RSI (matches TradingView & Fyers Web RSI).
  */
 export function calculateWilderRSI(closes: number[], length: number): (number | null)[] {
@@ -112,11 +175,23 @@ interface ArmedSetupState {
   biasSetNumber: number;
 }
 
+export interface RunStrategyOptions {
+  /**
+   * When true (active live Fyers session mid-candle), the final candle is still forming:
+   * - Intrabar SL, Trail-to-Cost, Target, EOD square-off, and breakout entries on an
+   *   already-armed setup STILL evaluate live on the forming bar.
+   * - 4-candle set bias confirmation, new RSI setup arming, and base-candle shifting
+   *   ONLY evaluate on CLOSED candles so Live never diverges from Backtest.
+   */
+  lastCandleIsForming?: boolean;
+}
+
 export function runNiftyStrategy(
   rawCandles: Candle[],
   config: StrategyConfig,
   maxCandleCount?: number,
-  precomputedRsiSeries?: (number | null)[]
+  precomputedRsiSeries?: (number | null)[],
+  options?: RunStrategyOptions
 ): BacktestResult {
   const candles =
     typeof maxCandleCount === 'number'
@@ -155,6 +230,8 @@ export function runNiftyStrategy(
 
   for (let i = 0; i < candles.length; i++) {
     const candle = candles[i];
+    const isFormingBar =
+      Boolean(options?.lastCandleIsForming) && i === candles.length - 1;
     const color = getCandleColor(candle);
     const rsi2 = rsiSeries[i] !== null ? round2(rsiSeries[i] as number) : null;
     const setNumber = Math.floor(i / config.setSize) + 1;
@@ -199,10 +276,7 @@ export function runNiftyStrategy(
           });
           trades.push({ ...openTrade });
           openTrade = null;
-        } else if (
-          slTriggeredFirst &&
-          (!openTrade.trailedToCost || candle.close < candle.open)
-        ) {
+        } else if (slTriggeredFirst) {
           const exitPx = openTrade.currentSlPrice;
           const pts = round2(exitPx - openTrade.entryPrice);
           openTrade.exitCandleIndex = i;
@@ -249,7 +323,25 @@ export function runNiftyStrategy(
             });
           }
 
-          if (openTrade && candle.high >= openTrade.targetPrice) {
+          if (openTrade && openTrade.trailedToCost && candle.close <= openTrade.entryPrice) {
+            const exitPx = openTrade.entryPrice;
+            openTrade.exitCandleIndex = i;
+            openTrade.exitTime = candle.time;
+            openTrade.exitPrice = exitPx;
+            openTrade.exitReason = 'TRAILED_COST_EXIT';
+            openTrade.pnlPoints = 0;
+            openTrade.pnlRupees = 0;
+            events.push({
+              candleIndex: i,
+              time: candle.time,
+              type: 'TRAIL_COST_HIT',
+              title: `Trade #${openTrade.id} Cost SL Exit`,
+              detail: `Reversed back to Cost SL ${exitPx.toFixed(2)} (0.00 pts)`,
+              sentiment: 'warning',
+            });
+            trades.push({ ...openTrade });
+            openTrade = null;
+          } else if (openTrade && candle.high >= openTrade.targetPrice) {
             const exitPx = openTrade.targetPrice;
             const pts = round2(exitPx - openTrade.entryPrice);
             openTrade.exitCandleIndex = i;
@@ -314,10 +406,7 @@ export function runNiftyStrategy(
           });
           trades.push({ ...openTrade });
           openTrade = null;
-        } else if (
-          slTriggeredFirst &&
-          (!openTrade.trailedToCost || candle.close > candle.open)
-        ) {
+        } else if (slTriggeredFirst) {
           const exitPx = openTrade.currentSlPrice;
           const pts = round2(openTrade.entryPrice - exitPx);
           openTrade.exitCandleIndex = i;
@@ -364,7 +453,25 @@ export function runNiftyStrategy(
             });
           }
 
-          if (openTrade && candle.low <= openTrade.targetPrice) {
+          if (openTrade && openTrade.trailedToCost && candle.close >= openTrade.entryPrice) {
+            const exitPx = openTrade.entryPrice;
+            openTrade.exitCandleIndex = i;
+            openTrade.exitTime = candle.time;
+            openTrade.exitPrice = exitPx;
+            openTrade.exitReason = 'TRAILED_COST_EXIT';
+            openTrade.pnlPoints = 0;
+            openTrade.pnlRupees = 0;
+            events.push({
+              candleIndex: i,
+              time: candle.time,
+              type: 'TRAIL_COST_HIT',
+              title: `Trade #${openTrade.id} Cost SL Exit`,
+              detail: `Reversed back to Cost SL ${exitPx.toFixed(2)} (0.00 pts)`,
+              sentiment: 'warning',
+            });
+            trades.push({ ...openTrade });
+            openTrade = null;
+          } else if (openTrade && candle.low <= openTrade.targetPrice) {
             const exitPx = openTrade.targetPrice;
             const pts = round2(openTrade.entryPrice - exitPx);
             openTrade.exitCandleIndex = i;
@@ -492,7 +599,14 @@ export function runNiftyStrategy(
           sentiment: 'bullish',
         });
 
-        if (candle.low <= slPrice && candle.close < entryPrice) {
+        // Standard OHLC entry-bar SL check:
+        // If bar opened at/above entry (entered at bar open), any low <= slPrice occurred after entry -> SL hit.
+        // Otherwise (bar opened below trigger and broke out upward), SL hit if bar reversed and closed below entry.
+        const entryBarHitSl =
+          candle.low <= slPrice &&
+          (candle.open >= minFill || candle.close < entryPrice);
+
+        if (entryBarHitSl) {
           newTrade.exitCandleIndex = i;
           newTrade.exitTime = candle.time;
           newTrade.exitPrice = slPrice;
@@ -528,7 +642,25 @@ export function runNiftyStrategy(
               sentiment: 'warning',
             });
           }
-          if (candle.high >= targetPrice) {
+          if (newTrade.trailedToCost && candle.close <= entryPrice) {
+            newTrade.exitCandleIndex = i;
+            newTrade.exitTime = candle.time;
+            newTrade.exitPrice = entryPrice;
+            newTrade.exitReason = 'TRAILED_COST_EXIT';
+            newTrade.pnlPoints = 0;
+            newTrade.pnlRupees = 0;
+            events.push({
+              candleIndex: i,
+              time: candle.time,
+              type: 'TRAIL_COST_HIT',
+              title: `Trade #${newTrade.id} Cost SL Exit`,
+              detail: `Entry bar reversed back to Cost SL ${entryPrice.toFixed(
+                2
+              )} (0.00 pts)`,
+              sentiment: 'warning',
+            });
+            trades.push(newTrade);
+          } else if (candle.high >= targetPrice) {
             newTrade.exitCandleIndex = i;
             newTrade.exitTime = candle.time;
             newTrade.exitPrice = targetPrice;
@@ -604,7 +736,14 @@ export function runNiftyStrategy(
           sentiment: 'bearish',
         });
 
-        if (candle.high >= slPrice && candle.close > entryPrice) {
+        // Standard OHLC entry-bar SL check:
+        // If bar opened at/below entry (entered at bar open), any high >= slPrice occurred after entry -> SL hit.
+        // Otherwise (bar opened above trigger and broke down), SL hit if bar reversed and closed above entry.
+        const entryBarHitSl =
+          candle.high >= slPrice &&
+          (candle.open <= maxFill || candle.close > entryPrice);
+
+        if (entryBarHitSl) {
           newTrade.exitCandleIndex = i;
           newTrade.exitTime = candle.time;
           newTrade.exitPrice = slPrice;
@@ -640,7 +779,25 @@ export function runNiftyStrategy(
               sentiment: 'warning',
             });
           }
-          if (candle.low <= targetPrice) {
+          if (newTrade.trailedToCost && candle.close >= entryPrice) {
+            newTrade.exitCandleIndex = i;
+            newTrade.exitTime = candle.time;
+            newTrade.exitPrice = entryPrice;
+            newTrade.exitReason = 'TRAILED_COST_EXIT';
+            newTrade.pnlPoints = 0;
+            newTrade.pnlRupees = 0;
+            events.push({
+              candleIndex: i,
+              time: candle.time,
+              type: 'TRAIL_COST_HIT',
+              title: `Trade #${newTrade.id} Cost SL Exit`,
+              detail: `Entry bar reversed back to Cost SL ${entryPrice.toFixed(
+                2
+              )} (0.00 pts)`,
+              sentiment: 'warning',
+            });
+            trades.push(newTrade);
+          } else if (candle.low <= targetPrice) {
             newTrade.exitCandleIndex = i;
             newTrade.exitTime = candle.time;
             newTrade.exitPrice = targetPrice;
@@ -671,8 +828,8 @@ export function runNiftyStrategy(
       }
     }
 
-    // 4. Evaluate 4-Candle Set at the close of the 4th candle
-    if (positionInSet === config.setSize) {
+    // 4. Evaluate 4-Candle Set at the close of the 4th candle (closed bars only)
+    if (!isFormingBar && positionInSet === config.setSize) {
       const startIdx = i - config.setSize + 1;
       const setSlice = candles.slice(startIdx, i + 1);
       let greenCount = 0;
@@ -755,12 +912,13 @@ export function runNiftyStrategy(
       }
     }
 
-    // 5. At candle close:
+    // 5. At candle close (closed bars only):
     //    (a) If setup is already armed and did NOT trigger on this candle, trail the base candle
     //        whenever a Lower High forms (for LONG) or a Higher Low forms (for SHORT),
     //        continuing until a subsequent candle breaks above/below the base candle.
     //    (b) If no setup is armed yet, check if RSI(2) enters Buy (<12) or Sell (>89) zone.
     if (
+      !isFormingBar &&
       !openTrade &&
       !dayHaltedByTarget &&
       activeBias !== 'PENDING' &&
@@ -1057,17 +1215,11 @@ export function runMultiDayBacktest(
     };
   }
 
-  // Precompute continuous Wilder RSI across all bars so morning candles have full warm-up
-  const continuousRsi = calculateWilderRSI(
-    allCandles.map((c) => c.close),
-    config.rsiLength
-  );
-
-  // Group candles chronologically by IST date
+  // Group candles chronologically by IST date and evaluate each session with
+  // identical per-day Wilder RSI so Backtest matches Live & Inspect Day 100%.
   const dayBuckets: Array<{
     date: string;
     candles: Candle[];
-    rsiSlice: (number | null)[];
   }> = [];
 
   for (let i = 0; i < allCandles.length; i++) {
@@ -1075,14 +1227,13 @@ export function runMultiDayBacktest(
     const dateKey = c.date || 'Session';
     let lastBucket = dayBuckets[dayBuckets.length - 1];
     if (!lastBucket || lastBucket.date !== dateKey) {
-      lastBucket = { date: dateKey, candles: [], rsiSlice: [] };
+      lastBucket = { date: dateKey, candles: [] };
       dayBuckets.push(lastBucket);
     }
     lastBucket.candles.push({
       ...c,
       index: lastBucket.candles.length,
     });
-    lastBucket.rsiSlice.push(continuousRsi[i]);
   }
 
   const dailySummaries: DailyBacktestSummary[] = [];
@@ -1100,12 +1251,7 @@ export function runMultiDayBacktest(
   let grossLossPoints = 0;
 
   for (const bucket of dayBuckets) {
-    const dayRes = runNiftyStrategy(
-      bucket.candles,
-      config,
-      undefined,
-      bucket.rsiSlice
-    );
+    const dayRes = runNiftyStrategy(bucket.candles, config);
 
     const closedTrades = dayRes.trades.filter((t) => t.exitReason !== 'OPEN');
     for (const t of closedTrades) {

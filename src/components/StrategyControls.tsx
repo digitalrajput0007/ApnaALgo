@@ -25,6 +25,7 @@ import {
   OPTION_DELTA_PRESETS,
   RiskBasedLotCalculation,
 } from '../utils/optionsEngine';
+import { NumericInput } from './NumericInput';
 
 interface StrategyControlsProps {
   config: StrategyConfig;
@@ -265,29 +266,45 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
               {isOptionBuying && (
                 <div>
                   <label className={labelCls}>
-                    Option Delta (0.50Δ = Half SL)
+                    Option Delta (0.10–1.00Δ)
                   </label>
-                  <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg">
-                    {OPTION_DELTA_PRESETS.map((preset) => {
-                      const active =
-                        Math.abs(config.optionDeltaEstimate - preset.delta) < 0.05;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() =>
-                            update('optionDeltaEstimate', preset.delta)
-                          }
-                          className={`py-1.5 text-[11px] font-mono rounded-md transition-colors cursor-pointer ${
-                            active
-                              ? 'bg-blue-600 text-white font-semibold'
-                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
-                          }`}
-                        >
-                          {preset.delta.toFixed(2)}Δ
-                        </button>
-                      );
-                    })}
+                  <div className="flex items-center gap-1.5">
+                    <div className="grid grid-cols-3 gap-1 p-1 flex-1 bg-slate-100 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-lg">
+                      {OPTION_DELTA_PRESETS.map((preset) => {
+                        const active =
+                          Math.abs(config.optionDeltaEstimate - preset.delta) <
+                          0.005;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() =>
+                              update('optionDeltaEstimate', preset.delta)
+                            }
+                            className={`py-1.5 text-[11px] font-mono rounded-md transition-colors cursor-pointer ${
+                              active
+                                ? 'bg-blue-600 text-white font-semibold'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                            }`}
+                          >
+                            {preset.delta.toFixed(2)}Δ
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="w-20 shrink-0">
+                      <NumericInput
+                        value={config.optionDeltaEstimate}
+                        min={0.1}
+                        max={1}
+                        allowDecimal
+                        decimals={2}
+                        ariaLabel="Custom Option Delta (0.10 to 1.00)"
+                        placeholder="0.50"
+                        onChange={(val) => update('optionDeltaEstimate', val)}
+                        className={`${inputCls} text-right`}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -325,14 +342,12 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                     </span>
                   ) : null}
                 </label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
+                <NumericInput
                   value={config.lotSize}
-                  onChange={(e) =>
-                    update('lotSize', Math.max(1, Number(e.target.value) || 1))
-                  }
+                  min={1}
+                  max={100000}
+                  ariaLabel="Lot size quantity"
+                  onChange={(val) => update('lotSize', val)}
                   className={inputCls}
                 />
               </div>
@@ -368,18 +383,14 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                     </span>
                   )}
                 </label>
-                <input
-                  type="number"
-                  min={2}
-                  max={500}
-                  step={1}
+                <NumericInput
                   value={config.stopLossPoints}
-                  onChange={(e) =>
-                    update(
-                      'stopLossPoints',
-                      Math.max(2, Number(e.target.value) || 20)
-                    )
-                  }
+                  min={1}
+                  max={2000}
+                  allowDecimal
+                  decimals={2}
+                  ariaLabel="Index Stop Loss in points"
+                  onChange={(val) => update('stopLossPoints', val)}
                   className={inputCls}
                 />
               </div>
@@ -393,18 +404,14 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                     </span>
                   )}
                 </label>
-                <input
-                  type="number"
-                  min={5}
-                  max={1500}
-                  step={5}
+                <NumericInput
                   value={config.targetPoints}
-                  onChange={(e) =>
-                    update(
-                      'targetPoints',
-                      Math.max(5, Number(e.target.value) || 60)
-                    )
-                  }
+                  min={1}
+                  max={5000}
+                  allowDecimal
+                  decimals={2}
+                  ariaLabel="Index Target in points"
+                  onChange={(val) => update('targetPoints', val)}
                   className={inputCls}
                 />
               </div>
@@ -418,36 +425,24 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
                     </span>
                   ) : null}
                 </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  step={1}
+                <NumericInput
                   value={config.lots}
-                  onChange={(e) =>
-                    update(
-                      'lots',
-                      Math.max(1, Math.floor(Number(e.target.value) || 1))
-                    )
-                  }
+                  min={1}
+                  max={5000}
+                  ariaLabel="Number of lots"
+                  onChange={(val) => update('lots', val)}
                   className={inputCls}
                 />
               </div>
 
               <div>
                 <label className={labelCls}>Max Trades / Day</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  step={1}
+                <NumericInput
                   value={config.maxTradesPerDay}
-                  onChange={(e) =>
-                    update(
-                      'maxTradesPerDay',
-                      Math.max(1, Math.min(20, Number(e.target.value) || 1))
-                    )
-                  }
+                  min={1}
+                  max={50}
+                  ariaLabel="Maximum trades per day"
+                  onChange={(val) => update('maxTradesPerDay', val)}
                   className={inputCls}
                 />
               </div>
@@ -516,17 +511,12 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
                 <label className={labelCls}>Set Size (Candles)</label>
-                <input
-                  type="number"
-                  min={2}
-                  max={12}
-                  step={1}
+                <NumericInput
                   value={config.setSize}
-                  onChange={(e) => {
-                    const nextSet = Math.max(
-                      2,
-                      Math.min(12, Number(e.target.value) || 4)
-                    );
+                  min={2}
+                  max={20}
+                  ariaLabel="Bias candle set size"
+                  onChange={(nextSet) => {
                     onChange({
                       ...config,
                       setSize: nextSet,
@@ -542,93 +532,72 @@ export const StrategyControls: React.FC<StrategyControlsProps> = ({
 
               <div>
                 <label className={labelCls}>Required Majority</label>
-                <input
-                  type="number"
+                <NumericInput
+                  value={config.requiredMajority}
                   min={2}
                   max={config.setSize}
-                  step={1}
-                  value={config.requiredMajority}
-                  onChange={(e) =>
-                    update(
-                      'requiredMajority',
-                      Math.max(
-                        2,
-                        Math.min(config.setSize, Number(e.target.value) || 3)
-                      )
-                    )
-                  }
+                  ariaLabel="Required candle majority"
+                  onChange={(val) => update('requiredMajority', val)}
                   className={inputCls}
                 />
               </div>
 
               <div>
                 <label className={labelCls}>RSI Length</label>
-                <input
-                  type="number"
-                  min={2}
-                  max={14}
-                  step={1}
+                <NumericInput
                   value={config.rsiLength}
-                  onChange={(e) =>
-                    update(
-                      'rsiLength',
-                      Math.max(2, Math.min(14, Number(e.target.value) || 2))
-                    )
-                  }
+                  min={2}
+                  max={50}
+                  ariaLabel="RSI length"
+                  onChange={(val) => update('rsiLength', val)}
                   className={inputCls}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Buy CE if RSI &lt;</label>
-                <input
-                  type="number"
+                <label className={labelCls}>
+                  Buy CE if RSI &lt;{' '}
+                  <span className="text-[10px] font-mono text-slate-400">
+                    (1–49)
+                  </span>
+                </label>
+                <NumericInput
+                  value={config.rsiBuyThreshold}
                   min={1}
                   max={49}
-                  step={1}
-                  value={config.rsiBuyThreshold}
-                  onChange={(e) =>
-                    update(
-                      'rsiBuyThreshold',
-                      Math.max(1, Math.min(49, Number(e.target.value) || 12))
-                    )
-                  }
+                  ariaLabel="Buy CE RSI threshold (1 to 49)"
+                  onChange={(val) => update('rsiBuyThreshold', val)}
                   className={inputCls}
                 />
               </div>
 
               <div>
-                <label className={labelCls}>Buy PE if RSI &gt;</label>
-                <input
-                  type="number"
+                <label className={labelCls}>
+                  Buy PE if RSI &gt;{' '}
+                  <span className="text-[10px] font-mono text-slate-400">
+                    (51–99)
+                  </span>
+                </label>
+                <NumericInput
+                  value={config.rsiSellThreshold}
                   min={51}
                   max={99}
-                  step={1}
-                  value={config.rsiSellThreshold}
-                  onChange={(e) =>
-                    update(
-                      'rsiSellThreshold',
-                      Math.max(51, Math.min(99, Number(e.target.value) || 89))
-                    )
-                  }
+                  ariaLabel="Buy PE RSI threshold (51 to 99)"
+                  onChange={(val) => update('rsiSellThreshold', val)}
                   className={inputCls}
                 />
               </div>
 
               <div>
                 <label className={labelCls}>Entry Buffer (pts)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={25}
-                  step={0.5}
+                <NumericInput
                   value={config.entryBufferPoints}
-                  onChange={(e) =>
-                    update(
-                      'entryBufferPoints',
-                      Math.max(0, Number(e.target.value) || 0)
-                    )
-                  }
+                  min={0}
+                  max={200}
+                  allowDecimal
+                  decimals={2}
+                  ariaLabel="Entry buffer in points"
+                  onChange={(val) => update('entryBufferPoints', val)}
                   className={inputCls}
                 />
               </div>

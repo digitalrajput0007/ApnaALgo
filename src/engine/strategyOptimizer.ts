@@ -132,11 +132,6 @@ function buildPrecomputedDays(
   rsiLengths: number[]
 ): PrecomputedDayBucket[] {
   const uniqueLengths = Array.from(new Set(rsiLengths));
-  const closes = allCandles.map((c) => c.close);
-  const rsiSeriesMap = new Map<number, (number | null)[]>();
-  for (const len of uniqueLengths) {
-    rsiSeriesMap.set(len, calculateWilderRSI(closes, len));
-  }
 
   const buckets: Array<{
     date: string;
@@ -151,26 +146,28 @@ function buildPrecomputedDays(
     const dateKey = c.date || 'Session';
     let last = buckets[buckets.length - 1];
     if (!last || last.date !== dateKey) {
-      const rsiByLength = new Map<number, (number | null)[]>();
-      for (const len of uniqueLengths) {
-        rsiByLength.set(len, []);
-      }
       last = {
         date: dateKey,
         candles: [],
         candleMins: [],
         candleColors: [],
-        rsiByLength,
+        rsiByLength: new Map<number, (number | null)[]>(),
       };
       buckets.push(last);
     }
     last.candles.push(c);
     last.candleMins.push(toMinutes(c.time));
     last.candleColors.push(getCandleColor(c));
+  }
+
+  // Compute Wilder RSI strictly per session day to match runNiftyStrategy & Live Strategy Lab
+  for (const bucket of buckets) {
+    const dayCloses = bucket.candles.map((c) => c.close);
     for (const len of uniqueLengths) {
-      const series = rsiSeriesMap.get(len);
-      const val = series ? series[i] : null;
-      last.rsiByLength.get(len)!.push(val !== null ? round2(val) : null);
+      const series = calculateWilderRSI(dayCloses, len).map((val) =>
+        val !== null ? round2(val) : null
+      );
+      bucket.rsiByLength.set(len, series);
     }
   }
 
@@ -282,10 +279,7 @@ function evaluateConfigFast(
           if (candle.open <= openSl) {
             recordExit(round2(candle.open - openEntry), false);
             hasOpen = false;
-          } else if (
-            slTriggeredFirst &&
-            (!openTrailed || candle.close < candle.open)
-          ) {
+          } else if (slTriggeredFirst) {
             recordExit(round2(openSl - openEntry), false);
             hasOpen = false;
           } else {
@@ -293,7 +287,10 @@ function evaluateConfigFast(
               openTrailed = true;
               openSl = openEntry;
             }
-            if (candle.high >= openTarget) {
+            if (openTrailed && candle.close <= openEntry) {
+              recordExit(0, false);
+              hasOpen = false;
+            } else if (candle.high >= openTarget) {
               recordExit(round2(openTarget - openEntry), true);
               hasOpen = false;
             }
@@ -304,10 +301,7 @@ function evaluateConfigFast(
           if (candle.open >= openSl) {
             recordExit(round2(openEntry - candle.open), false);
             hasOpen = false;
-          } else if (
-            slTriggeredFirst &&
-            (!openTrailed || candle.close > candle.open)
-          ) {
+          } else if (slTriggeredFirst) {
             recordExit(round2(openEntry - openSl), false);
             hasOpen = false;
           } else {
@@ -315,7 +309,10 @@ function evaluateConfigFast(
               openTrailed = true;
               openSl = openEntry;
             }
-            if (candle.low <= openTarget) {
+            if (openTrailed && candle.close >= openEntry) {
+              recordExit(0, false);
+              hasOpen = false;
+            } else if (candle.low <= openTarget) {
               recordExit(round2(openEntry - openTarget), true);
               hasOpen = false;
             }
@@ -357,7 +354,10 @@ function evaluateConfigFast(
           const slPrice = round2(entryPrice - slPts);
           const targetPrice = round2(entryPrice + tgtPts);
 
-          if (candle.low <= slPrice && candle.close < entryPrice) {
+          if (
+            candle.low <= slPrice &&
+            (candle.open >= minFill || candle.close < entryPrice)
+          ) {
             recordExit(-slPts, false);
           } else {
             let trailed = false;
@@ -366,7 +366,9 @@ function evaluateConfigFast(
               trailed = true;
               curSl = entryPrice;
             }
-            if (candle.high >= targetPrice) {
+            if (trailed && candle.close <= entryPrice) {
+              recordExit(0, false);
+            } else if (candle.high >= targetPrice) {
               recordExit(tgtPts, true);
             } else {
               hasOpen = true;
@@ -386,7 +388,10 @@ function evaluateConfigFast(
           const slPrice = round2(entryPrice + slPts);
           const targetPrice = round2(entryPrice - tgtPts);
 
-          if (candle.high >= slPrice && candle.close > entryPrice) {
+          if (
+            candle.high >= slPrice &&
+            (candle.open <= maxFill || candle.close > entryPrice)
+          ) {
             recordExit(-slPts, false);
           } else {
             let trailed = false;
@@ -395,7 +400,9 @@ function evaluateConfigFast(
               trailed = true;
               curSl = entryPrice;
             }
-            if (candle.low <= targetPrice) {
+            if (trailed && candle.close >= entryPrice) {
+              recordExit(0, false);
+            } else if (candle.low <= targetPrice) {
               recordExit(tgtPts, true);
             } else {
               hasOpen = true;

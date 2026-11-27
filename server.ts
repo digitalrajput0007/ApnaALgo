@@ -64,6 +64,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const FYERS_API_BASE = 'https://api-t1.fyers.in/api/v3';
 const FYERS_DATA_BASE = 'https://api-t1.fyers.in/data';
 const AUTH_COOKIE_NAME = 'neoalgo_auth';
+const DEV_LOGOUT_COOKIE_NAME = 'neoalgo_dev_logged_out';
 const AUTH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const pendingOAuthStates = new Map<string, PendingOAuthState>();
@@ -123,15 +124,47 @@ function isRequestHttps(req: http.IncomingMessage): boolean {
   return Boolean((req.socket as { encrypted?: boolean })?.encrypted);
 }
 
-function getAuthCookieOptions(req: http.IncomingMessage): CookieOptions {
+function getAuthCookieOptions(
+  req: http.IncomingMessage
+): CookieOptions & { partitioned?: boolean } {
   const https = isRequestHttps(req);
   return {
     httpOnly: true,
     secure: https,
     sameSite: https ? 'none' : 'lax',
+    partitioned: https,
     path: '/',
     maxAge: AUTH_COOKIE_MAX_AGE_MS,
   };
+}
+
+/**
+ * Strictly gates development-only auto-login so it can NEVER activate in production,
+ * on shared preview URLs (ais-pre-*), or on custom VPS domains.
+ */
+function isDevPreviewRequest(req?: http.IncomingMessage): boolean {
+  if (process.env.NODE_ENV !== 'development') return false;
+  if (process.env.DEV_AUTO_LOGIN === 'false') return false;
+  if (!req) return false;
+  const rawHost = (
+    (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() ||
+    req.headers.host?.trim() ||
+    ''
+  ).toLowerCase();
+  const hostname = rawHost.replace(/:\d+$/, '');
+  if (!hostname) return false;
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]'
+  ) {
+    return true;
+  }
+  // Allow AI Studio development container URL only (explicitly excludes ais-pre-* shared URLs)
+  if (hostname.startsWith('ais-dev-') && hostname.endsWith('.run.app')) {
+    return true;
+  }
+  return false;
 }
 
 function getFyersCredentials(): { appId: string; secretId: string } | null {
@@ -310,7 +343,14 @@ function getAuthenticatedUserFromReq(
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies[AUTH_COOKIE_NAME];
   const user = saasStore.getUserBySessionToken(token);
-  return user ? toPublicUser(user) : null;
+  if (user) {
+    return toPublicUser(user);
+  }
+  if (isDevPreviewRequest(req) && cookies[DEV_LOGOUT_COOKIE_NAME] !== '1') {
+    const devAdmin = saasStore.getOrCreateDevPreviewAdmin();
+    return toPublicUser(devAdmin);
+  }
+  return null;
 }
 
 function getUserFyersEntry(req: http.IncomingMessage): {
@@ -600,12 +640,64 @@ async function startServer() {
   // =========================================================================
 
   app.get('/api/auth/me', (req: Request, res: Response) => {
-    const user = getAuthenticatedUserFromReq(req);
+    const cookies = parseCookies(req.headers.cookie);
+    const devPreview = isDevPreviewRequest(req);
+    const existingSessionUser = saasStore.getUserBySessionToken(
+      cookies[AUTH_COOKIE_NAME]
+    );
+    let user = existingSessionUser ? toPublicUser(existingSessionUser) : null;
+
+    // In strict development mode, auto-issue an Admin session unless the user explicitly signed out
+    if (!user && devPreview && cookies[DEV_LOGOUT_COOKIE_NAME] !== '1') {
+      const devAdmin = saasStore.getOrCreateDevPreviewAdmin();
+      const session = saasStore.createAuthSession(devAdmin.id);
+      res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
+      user = toPublicUser(devAdmin);
+    }
+
     res.json({
       authenticated: Boolean(user),
       user,
       registeredUsers: saasStore.getUserCount(),
+      devAutoLoginAvailable: devPreview,
     });
+  });
+
+  app.post('/api/auth/dev-resume', (req: Request, res: Response) => {
+    if (!isDevPreviewRequest(req)) {
+      res.status(404).json({ error: 'Not found.' });
+      return;
+    }
+    const originHeader = req.headers.origin;
+    if (originHeader) {
+      try {
+        const originHost = new URL(originHeader).host.toLowerCase();
+        const reqHost = (
+          (req.headers['x-forwarded-host'] as string)?.split(',')[0]?.trim() ||
+          req.headers.host?.trim() ||
+          ''
+        ).toLowerCase();
+        if (reqHost && originHost !== reqHost) {
+          res.status(403).json({ error: 'Cross-origin request rejected.' });
+          return;
+        }
+      } catch {
+        res.status(403).json({ error: 'Invalid origin.' });
+        return;
+      }
+    }
+    const opts = getAuthCookieOptions(req);
+    res.clearCookie(DEV_LOGOUT_COOKIE_NAME, {
+      httpOnly: opts.httpOnly,
+      secure: opts.secure,
+      sameSite: opts.sameSite,
+      partitioned: opts.partitioned,
+      path: opts.path,
+    } as CookieOptions);
+    const devAdmin = saasStore.getOrCreateDevPreviewAdmin();
+    const session = saasStore.createAuthSession(devAdmin.id);
+    res.cookie(AUTH_COOKIE_NAME, session.token, opts);
+    res.json({ user: toPublicUser(devAdmin) });
   });
 
   app.post('/api/auth/register', (req: Request, res: Response) => {
@@ -649,7 +741,15 @@ async function startServer() {
         rawPassword
       );
       const session = saasStore.createAuthSession(user.id);
-      res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
+      const opts = getAuthCookieOptions(req);
+      res.clearCookie(DEV_LOGOUT_COOKIE_NAME, {
+        httpOnly: opts.httpOnly,
+        secure: opts.secure,
+        sameSite: opts.sameSite,
+        partitioned: opts.partitioned,
+        path: opts.path,
+      } as CookieOptions);
+      res.cookie(AUTH_COOKIE_NAME, session.token, opts);
       res.status(201).json({ user: toPublicUser(user), recoveryKey });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Registration failed.';
@@ -680,7 +780,15 @@ async function startServer() {
     }
 
     const session = saasStore.createAuthSession(outcome.user.id);
-    res.cookie(AUTH_COOKIE_NAME, session.token, getAuthCookieOptions(req));
+    const opts = getAuthCookieOptions(req);
+    res.clearCookie(DEV_LOGOUT_COOKIE_NAME, {
+      httpOnly: opts.httpOnly,
+      secure: opts.secure,
+      sameSite: opts.sameSite,
+      partitioned: opts.partitioned,
+      path: opts.path,
+    } as CookieOptions);
+    res.cookie(AUTH_COOKIE_NAME, session.token, opts);
     res.json({ user: toPublicUser(outcome.user) });
   });
 
@@ -692,8 +800,15 @@ async function startServer() {
       httpOnly: opts.httpOnly,
       secure: opts.secure,
       sameSite: opts.sameSite,
+      partitioned: opts.partitioned,
       path: opts.path,
-    });
+    } as CookieOptions);
+    if (isDevPreviewRequest(req)) {
+      res.cookie(DEV_LOGOUT_COOKIE_NAME, '1', {
+        ...opts,
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+    }
     res.json({ ok: true });
   });
 
@@ -1696,43 +1811,38 @@ async function startServer() {
     });
   });
 
-  app.post('/api/telegram/dispatch', async (req: Request, res: Response) => {
-    const user = getAuthenticatedUserFromReq(req);
-    if (!user) {
-      res.status(401).json({ error: 'Authentication required.' });
-      return;
-    }
-
-    const payload = req.body as TelegramAlertPayload | undefined;
-    if (!payload || !payload.eventKey || !payload.eventType) {
-      res.status(400).json({ error: 'Invalid Telegram alert payload.' });
-      return;
-    }
-
-    const stored = saasStore.getTelegramConfig(user.id);
+  async function dispatchTelegramAlertForUser(
+    userId: string,
+    payload: TelegramAlertPayload
+  ): Promise<{
+    ok?: boolean;
+    skipped?: boolean;
+    reason?: string;
+    deliveredCount?: number;
+    failedCount?: number;
+    results?: Awaited<ReturnType<typeof sendTelegramHtmlMessage>>[];
+    logEntry?: TelegramDeliveryLogEntry;
+  }> {
+    const stored = saasStore.getTelegramConfig(userId);
     if (!stored.enabled || !stored.botToken) {
-      res.json({ skipped: true, reason: 'disabled' });
-      return;
+      return { skipped: true, reason: 'disabled' };
     }
 
     if (!isTriggerEnabledForEvent(stored.triggers, payload.eventType)) {
-      res.json({ skipped: true, reason: 'trigger_disabled' });
-      return;
+      return { skipped: true, reason: 'trigger_disabled' };
     }
 
-    if (hasDispatchedTelegramEvent(user.id, payload.eventKey)) {
-      res.json({ skipped: true, reason: 'duplicate' });
-      return;
+    if (hasDispatchedTelegramEvent(userId, payload.eventKey)) {
+      return { skipped: true, reason: 'duplicate' };
     }
 
     const targets = stored.destinations.filter((d) => d.enabled);
     if (targets.length === 0) {
-      res.json({ skipped: true, reason: 'no_enabled_destinations' });
-      return;
+      return { skipped: true, reason: 'no_enabled_destinations' };
     }
 
     // Reserve eventKey immediately to avoid duplicate sends under concurrent ticks
-    markDispatchedTelegramEvent(user.id, payload.eventKey);
+    markDispatchedTelegramEvent(userId, payload.eventKey);
 
     const htmlText = formatTelegramAlertHtml(payload);
     const results = await Promise.all(
@@ -1755,15 +1865,32 @@ async function startServer() {
       failedCount,
       results,
     };
-    recordTelegramDeliveryLog(user.id, logEntry);
+    recordTelegramDeliveryLog(userId, logEntry);
 
-    res.json({
+    return {
       ok: deliveredCount > 0,
       deliveredCount,
       failedCount,
       results,
       logEntry,
-    });
+    };
+  }
+
+  app.post('/api/telegram/dispatch', async (req: Request, res: Response) => {
+    const user = getAuthenticatedUserFromReq(req);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    const payload = req.body as TelegramAlertPayload | undefined;
+    if (!payload || !payload.eventKey || !payload.eventType) {
+      res.status(400).json({ error: 'Invalid Telegram alert payload.' });
+      return;
+    }
+
+    const result = await dispatchTelegramAlertForUser(user.id, payload);
+    res.json(result);
   });
 
   // =========================================================================
@@ -2518,6 +2645,7 @@ async function startServer() {
     },
     getCurrentIstDate: getCurrentIstDateString,
     formatIstHHMM,
+    dispatchTelegramAlert: dispatchTelegramAlertForUser,
   });
 
   // Per-user Real-time Fyers WebSocket broadcaster (/ws/fyers)

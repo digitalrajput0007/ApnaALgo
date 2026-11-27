@@ -528,11 +528,14 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 Entry Price
               </span>
               <input
-                type="number"
-                step="0.05"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 required
                 value={manualEntryPrice}
-                onChange={(e) => setManualEntryPrice(e.target.value)}
+                onChange={(e) =>
+                  setManualEntryPrice(e.target.value.replace(/[^\d.]/g, ''))
+                }
                 className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>
@@ -542,11 +545,14 @@ export const PaperCalendarView: React.FC<PaperCalendarViewProps> = ({
                 Exit Price
               </span>
               <input
-                type="number"
-                step="0.05"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 required
                 value={manualExitPrice}
-                onChange={(e) => setManualExitPrice(e.target.value)}
+                onChange={(e) =>
+                  setManualExitPrice(e.target.value.replace(/[^\d.]/g, ''))
+                }
                 className="mt-1 w-full px-2.5 py-1.5 text-xs font-mono tabular-nums text-slate-900 dark:text-slate-100 bg-white dark:bg-[#161D2B] border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </label>

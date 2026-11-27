@@ -240,6 +240,20 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({
                 </button>
               </form>
 
+              {auth.devAutoLoginAvailable && (
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800/90">
+                  <button
+                    type="button"
+                    disabled={auth.submitting}
+                    onClick={() => void auth.resumeDevPreview()}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 disabled:opacity-60 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Continue as Admin (Development Preview)</span>
+                  </button>
+                </div>
+              )}
+
               {canInitializeAdmin && (
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800/90 text-center">
                   <button
